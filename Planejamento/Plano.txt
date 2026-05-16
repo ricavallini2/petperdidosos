@@ -1,0 +1,47 @@
+PetPerdidoSOS
+
+- Cadastro de perfil
+	.Nome completo
+	.Cpf
+	.Celular
+	.E-mail
+	.Foto
+	.Resgates
+	.Valor a receber
+	.Avaliação 
+	.Chave pix
+
+- Cadastrar alerta de pet perdido
+	.Foto principal
+	.Nome
+	.Raça
+	.Cor
+	.Porte
+	.Descrição
+	.Maiores informações
+	.Data e Hora do desaparecimento
+	.Data e hora do cadastro
+	.Recompensa
+	.Status
+	.Fotos adicionais, até 3.
+
+- Configurações
+	.Mostrar icone de buscador no mapa S/N
+	.Receber novos alertas por e-mail ou WhatsApp 
+	.Raio de busca padrão
+	.Modo de locomoção para calculo de rota
+	
+
+-Como será o aplicativo:
+	.Tela inicial trará o mapa, com um filtro para determinar o raio de busca ou total. Logotipo do app e foto do perfil no topo esquerdo, topo direito deve ter o botão de alertas. O mapa mostrará o icone dos pets perdidos dentro do raio escolhido no filtro. Os usuarios logados no app são mostrados no mapa como buscadores em tempo real, todos serão representados pelo mesmo icone, diferenciando apenas pelo numero de regates realizados, como um destaque adicional ao icone. O perfil tem como configurar se quer ou não ser mostrado no mapa. Ao clicar em algum pet do mapa deve abrir um card com maiores informações, podendo clicar e abrir a tela do pet com todas as informações. No card deve ter opção de entrar em contato por chat com o tutor, caso alguem localize deve realizar o contato por este chat, podendo enviar fotos para confirmar se é o mesmo pet. Todas as conversas abertas devem ser finalizadas pelo tutor e ao finalizar o tutor deve informar se foi localizado ou não. Caso sim, o caso é finalizado e a recompensa vai para quem localizou. Ter como clicar em um pet e traçar rota para ir até o local.
+
+	.Tela para cadastro do pet perdido, deve perdir foto principal e ajustar a miniatura de forma iterativa. A recompensa pode ou não ser adicionada, caso a escolha seja sim, pode adicionar qualquer valor, 10% taxa do app, deve confirmar o pagamento antes de publicar. Esse dinheiro fica de garantia para pagar a recompensa caso o pet seja encontrado. Depois de cadastrado, ter opção de cancelar que só ficará disponível caso não tenha nenhum chat em aberto com buscadores. Se cancelar o saldo é devolvido ao perfil com a taxa descontada.
+
+	.Tela dashboard do perfil. Mostrar os meus alertas ativos e finalizados. Mostrar meus regates. Opção de editar o perfil, opção de ver minhas recompensas e solicitar pagamentos, ter extrato de entrada e saída. Ter informaçoes sobre privacidade e segurança, ter uma central de ajuda via chat.
+
+	.Tela de Chat, mostrar os chats ativos e encerrados. Os chats ficam em aberto até o tutor encerrar o cadastro do pet perdido.  
+
+	.IA para detecção por foto, o buscador localiza um pet e tira uma foto. A ia irá buscar dentros os pets cadastrados dentro do raio se existe algum compatível. Se sim mostrará o card do pet para ser contactado.
+	
+	
+
