@@ -1342,6 +1342,82 @@ app.get(
 );
 
 // ============================================================================
+// DOAÇÃO — lista de pets disponíveis para adoção (área própria, fora do mapa).
+// Filtros opcionais: lat/lng/radius (distância) e species. Sem localização,
+// retorna as doações ativas mais recentes. Adoção costuma abranger área maior,
+// então o raio padrão é generoso.
+// ============================================================================
+app.get(
+  '/pets/donations',
+  asyncHandler(async (req, res) => {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    const hasLoc = Number.isFinite(lat) && Number.isFinite(lng);
+    const radius = Number(req.query.radius ?? 50000); // 50km padrão
+    const species = typeof req.query.species === 'string' ? req.query.species : null;
+
+    let query = supabase
+      .from('pets')
+      .select(
+        `id, user_id, name, breed, color, size, sex, age_group, description, extra_info,
+         type, species, adoption_rules, main_photo_url, latitude, longitude, created_at,
+         profiles!pets_user_id_fkey ( full_name, photo_url, rescues_count )`
+      )
+      .eq('type', 'donation')
+      .eq('status', 'ativo')
+      .order('created_at', { ascending: false });
+
+    if (species && ['cachorro', 'gato', 'passaro', 'outro'].includes(species)) {
+      query = query.eq('species', species);
+    }
+    if (hasLoc) {
+      const degRange = radius / 111000;
+      query = query
+        .gte('latitude', lat - degRange).lte('latitude', lat + degRange)
+        .gte('longitude', lng - degRange).lte('longitude', lng + degRange);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let list = (data ?? []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      breed: p.breed,
+      color: p.color,
+      size: p.size,
+      sex: p.sex,
+      age_group: p.age_group,
+      description: p.description,
+      extra_info: p.extra_info,
+      type: 'donation',
+      species: p.species ?? null,
+      adoption_rules: p.adoption_rules ?? null,
+      photo_url: p.main_photo_url,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      distance: hasLoc ? haversineMeters(lat, lng, p.latitude, p.longitude) : null,
+      created_at: p.created_at,
+      lost_date: p.created_at,
+      user: {
+        id: p.user_id,
+        name: p.profiles?.full_name ?? 'Usuário',
+        photo_url: p.profiles?.photo_url ?? null,
+        rescues_count: p.profiles?.rescues_count ?? 0,
+      },
+    }));
+
+    if (hasLoc) {
+      list = list
+        .filter((p) => (p.distance ?? Infinity) <= radius)
+        .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0));
+    }
+
+    res.json(list);
+  })
+);
+
+// ============================================================================
 // PETS — detalhes
 // ============================================================================
 app.get(

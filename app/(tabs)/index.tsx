@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot from 'react-native-view-shot';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, reportPet, claimSighting, getPetSightings, getPublicProfile, PET_REPORT_REASONS, PetSighting } from '../../services/api';
+import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, reportPet, claimSighting, getPetSightings, getPublicProfile, getNotifications, PET_REPORT_REASONS, PetSighting } from '../../services/api';
 import { COMPLETE_PROFILE_KEY } from '../login';
 import { useSearcherPresence } from '../../hooks/use-searcher-presence';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { customMapStyle } from '../../constants/mapStyle';
 import { Avatar } from '../../components/Avatar';
 import { toast, showConfirm, showActionSheet } from '../../components/Feedback';
+import { formatDistance } from '../../utils/formatDistance';
+import { colorMatches } from '../../utils/colorMatch';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -236,6 +238,8 @@ export default function MapScreen() {
   const focusParams = useLocalSearchParams<{ focus?: string; details?: string }>();
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const bellAnim = useRef(new Animated.Value(0)).current;
   const [showOnMap, setShowOnMap] = useState(true);
   const [showProfilePhoto, setShowProfilePhoto] = useState(true);
   const [pinColor, setPinColor] = useState('#3498DB');
@@ -387,6 +391,38 @@ export default function MapScreen() {
     }).catch(() => {});
   }, [user]));
 
+  // Notificações não lidas: atualiza no foco e a cada 30s (pra pegar novas
+  // enquanto o mapa está aberto). Alimenta o contador + animação do sino.
+  const refreshUnread = useCallback(() => {
+    if (!user) return;
+    getNotifications(user.id)
+      .then((list: any[]) => setUnreadCount((list ?? []).filter((n) => !n.read).length))
+      .catch(() => {});
+  }, [user]);
+
+  useFocusEffect(useCallback(() => {
+    refreshUnread();
+    const id = setInterval(refreshUnread, 30000);
+    return () => clearInterval(id);
+  }, [refreshUnread]));
+
+  // Anima o sino (balança) em loop enquanto houver notificações não lidas.
+  useEffect(() => {
+    if (unreadCount > 0) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(bellAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+          Animated.timing(bellAnim, { toValue: -1, duration: 240, useNativeDriver: true }),
+          Animated.timing(bellAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
+          Animated.delay(1600), // pausa entre os "toques" para não cansar
+        ]),
+      );
+      loop.start();
+      return () => { loop.stop(); bellAnim.setValue(0); };
+    }
+    bellAnim.setValue(0);
+  }, [unreadCount, bellAnim]);
+
   // Presence: sempre vê os outros se logado; só publica a si mesmo se show_on_map=true
   const selfPresence = (user && location && profile) ? {
     user_id: user.id,
@@ -512,12 +548,15 @@ export default function MapScreen() {
   // Clusterização manual: agrupa pets próximos quando o mapa está afastado.
   // Usa uma grade cujo tamanho é proporcional ao zoom (latitudeDelta).
   const clusteredPets = useMemo(() => {
-    // Aplica os filtros: tipo (legenda), espécie e cor (texto livre por trecho).
-    const colorQuery = colorFilter.trim().toLowerCase();
+    // Aplica os filtros: tipo (legenda), espécie e cor (texto livre, com
+    // tolerância a gênero/plural e sinônimos via colorMatches).
+    // Doação NÃO aparece no mapa SOS — tem área própria (aba Doação).
     const visiblePets = pets.filter((p) => {
-      if (typeFilter[((p.type ?? 'lost') as 'lost' | 'sighted' | 'rescued' | 'donation')] === false) return false;
+      const t = (p.type ?? 'lost') as 'lost' | 'sighted' | 'rescued' | 'donation';
+      if (t === 'donation') return false;
+      if (typeFilter[t] === false) return false;
       if (speciesFilter && (p.species ?? null) !== speciesFilter) return false;
-      if (colorQuery && !((p.color ?? '').toLowerCase().includes(colorQuery))) return false;
+      if (!colorMatches(p.color, colorFilter)) return false;
       return true;
     });
     const delta = currentRegion?.latitudeDelta ?? 0;
@@ -548,6 +587,20 @@ export default function MapScreen() {
     }
     return { clusters, singles };
   }, [pets, currentRegion, typeFilter, speciesFilter, colorFilter]);
+
+  // Contagem de pets por tipo (respeita os filtros de espécie/cor) para os
+  // badges da legenda. Não considera o toggle de tipo — mostra quantos existem.
+  const typeCounts = useMemo(() => {
+    const c: Record<'lost' | 'sighted' | 'rescued' | 'donation', number> = { lost: 0, sighted: 0, rescued: 0, donation: 0 };
+    for (const p of pets) {
+      const t = (p.type ?? 'lost') as 'lost' | 'sighted' | 'rescued' | 'donation';
+      if (t === 'donation') continue; // doação não entra no mapa
+      if (speciesFilter && (p.species ?? null) !== speciesFilter) continue;
+      if (!colorMatches(p.color, colorFilter)) continue;
+      if (t in c) c[t]++;
+    }
+    return c;
+  }, [pets, speciesFilter, colorFilter]);
 
   // Toque no pet: 1º toque destaca (marcador aumenta); 2º toque abre o card
   const handlePetPress = (pet: PetSighting) => {
@@ -1259,9 +1312,24 @@ export default function MapScreen() {
 
           {/* Direita: sino de alertas + miniatura do usuário */}
           <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.notificationBtn} onPress={() => router.push('/profile/notifications')}>
-              <Ionicons name="notifications-outline" size={26} color="#2F3542" />
-              <View style={styles.badge} />
+            <TouchableOpacity
+              style={styles.notificationBtn}
+              onPress={() => { setUnreadCount(0); router.push('/profile/notifications'); }}
+            >
+              <Animated.View style={{
+                transform: [{ rotate: bellAnim.interpolate({ inputRange: [-1, 1], outputRange: ['-18deg', '18deg'] }) }],
+              }}>
+                <Ionicons
+                  name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
+                  size={26}
+                  color={unreadCount > 0 ? '#FF4757' : '#2F3542'}
+                />
+              </Animated.View>
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
               {profile?.photo_url ? (
@@ -1288,26 +1356,34 @@ export default function MapScreen() {
         </TouchableOpacity>
 
         {/* Legenda interativa = filtro por tipo (toque para mostrar/ocultar) */}
-        <View style={styles.legend}>
-          {([
-            { key: 'lost', label: 'Perdido', color: '#FF4757', icon: 'megaphone' },
-            { key: 'sighted', label: 'Visto', color: '#FFC312', icon: 'eye' },
-            { key: 'rescued', label: 'Resgatado', color: '#2ED573', icon: 'heart' },
-            { key: 'donation', label: 'Doando', color: '#3B82F6', icon: 'gift' },
-          ] as { key: 'lost' | 'sighted' | 'rescued' | 'donation'; label: string; color: string; icon: any }[]).map((it) => {
-            const on = typeFilter[it.key];
-            return (
-              <TouchableOpacity
-                key={it.key}
-                activeOpacity={0.7}
-                onPress={() => setTypeFilter((prev) => ({ ...prev, [it.key]: !prev[it.key] }))}
-                style={[styles.legendItem, on ? { backgroundColor: it.color + '1A' } : styles.legendItemOff]}
-              >
-                <Ionicons name={it.icon} size={14} color={on ? it.color : '#A4B0BE'} />
-                <Text style={[styles.legendText, { color: on ? it.color : '#A4B0BE' }]}>{it.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.legendBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.legendScrollContent}
+          >
+            {([
+              { key: 'lost', label: 'Perdido', color: '#FF4757', icon: 'megaphone' },
+              { key: 'sighted', label: 'Visto', color: '#FFC312', icon: 'eye' },
+              { key: 'rescued', label: 'Resgatado', color: '#2ED573', icon: 'heart' },
+            ] as { key: 'lost' | 'sighted' | 'rescued' | 'donation'; label: string; color: string; icon: any }[]).map((it) => {
+              const on = typeFilter[it.key];
+              return (
+                <TouchableOpacity
+                  key={it.key}
+                  activeOpacity={0.7}
+                  onPress={() => setTypeFilter((prev) => ({ ...prev, [it.key]: !prev[it.key] }))}
+                  style={[styles.legendItem, on ? { backgroundColor: it.color + '1A' } : styles.legendItemOff]}
+                >
+                  <Ionicons name={it.icon} size={13} color={on ? it.color : '#A4B0BE'} />
+                  <Text style={[styles.legendText, { color: on ? it.color : '#A4B0BE' }]}>{it.label}</Text>
+                  <View style={[styles.legendCount, { backgroundColor: on ? it.color : '#CED6E0' }]}>
+                    <Text style={styles.legendCountText}>{typeCounts[it.key]}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       </View>
 
@@ -1450,7 +1526,7 @@ export default function MapScreen() {
         const heroW = Dimensions.get('window').width - 32;
         const gallery = sightingGallery.length ? sightingGallery : (selectedSighting.photo_url ? [selectedSighting.photo_url] : []);
         const distTxt = location
-          ? (() => { const d = distMeters(location.coords.latitude, location.coords.longitude, selectedSighting.latitude, selectedSighting.longitude); return d >= 1000 ? `${(d / 1000).toFixed(1)} km de você` : `${Math.round(d)} m de você`; })()
+          ? (() => { const d = distMeters(location.coords.latitude, location.coords.longitude, selectedSighting.latitude, selectedSighting.longitude); return `${formatDistance(d)} de você`; })()
           : null;
         const elapsed = formatElapsedMask(selectedSighting.created_at);
         return (
@@ -1648,7 +1724,7 @@ export default function MapScreen() {
                         <View style={[styles.sightingInfoIcon, { backgroundColor: tBg }]}><Ionicons name="navigate-outline" size={15} color={tColor} /></View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.sightingInfoLabel}>Distância</Text>
-                          <Text style={styles.sightingInfoValue}>{selectedPet.distance >= 1000 ? `${(selectedPet.distance / 1000).toFixed(1)} km de você` : `${Math.round(selectedPet.distance)} m de você`}</Text>
+                          <Text style={styles.sightingInfoValue}>{`${formatDistance(selectedPet.distance)} de você`}</Text>
                         </View>
                       </View>
                       <View style={[styles.sightingInfoLine, styles.sightingInfoLineLast]}>
@@ -1921,9 +1997,9 @@ export default function MapScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Espécie */}
+            {/* Espécie — todos os itens em uma única linha */}
             <Text style={styles.filterSectionLabel}>Espécie</Text>
-            <View style={styles.filterPillsRow}>
+            <View style={styles.filterSpeciesRow}>
               {([
                 { key: null, label: 'Todas' },
                 { key: 'cachorro', label: 'Cachorro' },
@@ -1935,10 +2011,17 @@ export default function MapScreen() {
                 return (
                   <TouchableOpacity
                     key={opt.label}
-                    style={[styles.filterPill, active && styles.filterPillSelected]}
+                    style={[styles.filterSpeciesPill, active && styles.filterPillSelected]}
                     onPress={() => setSpeciesFilter(opt.key)}
                   >
-                    <Text style={[styles.filterPillText, active && styles.filterPillTextSelected]}>{opt.label}</Text>
+                    <Text
+                      style={[styles.filterSpeciesText, active && styles.filterPillTextSelected]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >
+                      {opt.label}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
@@ -2079,7 +2162,7 @@ function PetLabelCapture({
     return `há ${mins} min`;
   })();
   const distTxt = typeof distance === 'number'
-    ? (distance >= 1000 ? `${(distance / 1000).toFixed(1)} km de você` : `${Math.round(distance)} m de você`)
+    ? `${formatDistance(distance)} de você`
     : null;
   const txt = { flex: 1, fontSize: 12, color: '#747D8C', fontWeight: '600' as const, marginLeft: 6 };
   const row = { flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: 4 };
@@ -2636,7 +2719,7 @@ function PetDetailsView({
                 <View style={[detStyles.infoIcon, { backgroundColor: tm.bg }]}><Ionicons name="navigate-outline" size={15} color={tm.color} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={detStyles.infoLabel}>Distância de você</Text>
-                  <Text style={detStyles.infoValue}>{distanceM >= 1000 ? `${(distanceM / 1000).toFixed(1)} km` : `${Math.round(distanceM)} m`}</Text>
+                  <Text style={detStyles.infoValue}>{formatDistance(distanceM)}</Text>
                 </View>
               </View>
             )}
@@ -3095,12 +3178,22 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: 12,
-    right: 14,
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
+    top: 6,
+    right: 6,
+    minWidth: 19,
+    height: 19,
+    borderRadius: 9.5,
+    paddingHorizontal: 4,
     backgroundColor: '#FF4757',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 10.5,
+    fontWeight: '900',
   },
   searchBar: {
     backgroundColor: '#FFF',
@@ -3114,17 +3207,21 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8,
   },
-  legend: {
-    flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8,
-    marginTop: 10, alignSelf: 'center',
+  // Barra de filtros: linha única com rolagem horizontal (nunca quebra).
+  legendBar: {
+    width: '94%', marginTop: 10, alignSelf: 'center',
     backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 14,
-    paddingVertical: 6, paddingHorizontal: 8,
+    paddingVertical: 6,
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 4,
   },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  // Centraliza os chips quando cabem; rola quando passam da largura.
+  legendScrollContent: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10 },
   legendItemOff: { backgroundColor: '#F1F2F6' },
   legendDot: { width: 11, height: 11, borderRadius: 5.5 },
-  legendText: { fontSize: 12, fontWeight: '800', color: '#2F3542' },
+  legendText: { fontSize: 11.5, fontWeight: '800', color: '#2F3542' },
+  legendCount: { minWidth: 17, paddingHorizontal: 4, height: 17, borderRadius: 8.5, justifyContent: 'center', alignItems: 'center' },
+  legendCountText: { fontSize: 10, fontWeight: '900', color: '#FFF' },
   adoptCard: { backgroundColor: '#EFF6FF', borderRadius: 16, padding: 14, marginTop: 4, marginBottom: 4, borderWidth: 1, borderColor: '#DBEAFE' },
   adoptHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   adoptTitle: { fontSize: 13, fontWeight: '800', color: '#3B82F6' },
@@ -3658,22 +3755,30 @@ const styles = StyleSheet.create({
   filterPillSelected: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
   filterPillText: { color: '#2F3542', fontWeight: '700', fontSize: 14 },
   filterPillTextSelected: { color: '#FFF' },
-  // Stepper do raio (− valor +)
-  radiusStepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Stepper do raio (− valor +) — compacto e centralizado (não estica).
+  radiusStepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   radiusStepBtn: {
-    width: 52, height: 52, borderRadius: 14, backgroundColor: '#FFF0F1',
+    width: 46, height: 46, borderRadius: 13, backgroundColor: '#FFF0F1',
     justifyContent: 'center', alignItems: 'center',
   },
   radiusValueWrap: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    height: 52, borderRadius: 14, backgroundColor: '#F1F2F6',
+    width: 116, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    height: 46, borderRadius: 13, backgroundColor: '#F1F2F6',
   },
-  radiusValueInput: { fontSize: 24, fontWeight: '900', color: '#2F3542', minWidth: 60, padding: 0 },
-  radiusValueUnit: { fontSize: 15, fontWeight: '800', color: '#747D8C' },
+  radiusValueInput: { fontSize: 22, fontWeight: '900', color: '#2F3542', minWidth: 40, padding: 0 },
+  radiusValueUnit: { fontSize: 14, fontWeight: '800', color: '#747D8C' },
   filterColorWrap: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#F1F2F6', borderRadius: 12, paddingHorizontal: 14, height: 48,
   },
+  // Espécie em uma única linha (colunas iguais)
+  filterSpeciesRow: { flexDirection: 'row', gap: 6 },
+  filterSpeciesPill: {
+    flex: 1, paddingVertical: 9, paddingHorizontal: 4, borderRadius: 11,
+    backgroundColor: '#F1F2F6', borderWidth: 1, borderColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  filterSpeciesText: { color: '#2F3542', fontWeight: '700', fontSize: 12.5, textAlign: 'center' },
   filterApplyBtn: {
     marginTop: 20, height: 52, borderRadius: 14, backgroundColor: '#FF4757',
     justifyContent: 'center', alignItems: 'center',

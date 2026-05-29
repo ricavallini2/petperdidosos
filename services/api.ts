@@ -169,6 +169,52 @@ export const fetchNearbyPets = async (lat: number, lng: number, radius = 5000): 
   }
 };
 
+// ============================================================================
+// DOAÇÃO — lista de pets para adoção (área própria, fora do mapa SOS)
+// ============================================================================
+export interface DonationPet {
+  id: string;
+  name: string;
+  breed?: string | null;
+  color?: string | null;
+  size?: PetSize | null;
+  sex?: PetSex | null;
+  age_group?: PetAgeGroup | null;
+  description?: string | null;
+  extra_info?: string | null;
+  type: 'donation';
+  species?: PetSpecies | null;
+  adoption_rules?: string | null;
+  photo_url: string;
+  latitude: number;
+  longitude: number;
+  distance: number | null;
+  created_at?: string;
+  user?: { id: string; name: string; photo_url?: string | null; rescues_count?: number };
+}
+
+export const fetchDonations = async (params?: {
+  lat?: number;
+  lng?: number;
+  radius?: number;
+  species?: PetSpecies | null;
+}): Promise<DonationPet[]> => {
+  const q = new URLSearchParams();
+  if (params?.lat != null && params?.lng != null) {
+    q.set('lat', String(params.lat));
+    q.set('lng', String(params.lng));
+  }
+  if (params?.radius != null) q.set('radius', String(params.radius));
+  if (params?.species) q.set('species', params.species);
+
+  const response = await authedFetch(`${API_URL}/pets/donations?${q.toString()}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
 export const createPetReport = async (data: CreatePetInput) => {
   try {
     const response = await authedFetch(`${API_URL}/pets`, {

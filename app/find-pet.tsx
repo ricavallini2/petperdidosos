@@ -20,6 +20,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from '../components/Feedback';
 import { supabase } from '../services/supabase';
 import { matchPetByPhoto, PetMatch, useAiSearchApi } from '../services/api';
+import { formatDistance } from '../utils/formatDistance';
 
 type SortMode = 'similarity' | 'distance';
 
@@ -30,10 +31,7 @@ const sexLabel = (s?: string) => s === 'macho' ? 'Macho' : s === 'femea' ? 'Fêm
 
 const ageLabel = (a?: string) => a === 'filhote' ? 'Filhote' : a === 'adulto' ? 'Adulto' : a === 'idoso' ? 'Idoso' : null;
 
-const distanceLabel = (m: number | null) => {
-  if (m == null) return null;
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
-};
+const distanceLabel = formatDistance;
 
 const similarityColor = (pct: number) =>
   pct >= 80 ? '#2ED573' : pct >= 60 ? '#FFA502' : '#FF4757';

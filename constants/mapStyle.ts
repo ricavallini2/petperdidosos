@@ -81,7 +81,16 @@ export const customMapStyle = [
     "elementType": "geometry",
     "stylers": [
       {
-        "color": "#bfe5b3"
+        "color": "#f5f5f5"
+      }
+    ]
+  },
+  {
+    "featureType": "landscape.natural.terrain",
+    "elementType": "geometry",
+    "stylers": [
+      {
+        "color": "#f5f5f5"
       }
     ]
   },

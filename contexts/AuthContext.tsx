@@ -24,19 +24,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      // Se havia sessão de uma execução anterior mas o usuário não marcou
-      // "manter conectado", encerra a sessão local e exige novo login.
-      if (session) {
-        const keep = await AsyncStorage.getItem(KEEP_LOGGED_IN_KEY);
-        if (keep === 'false') {
-          await supabase.auth.signOut({ scope: 'local' });
-          return; // onAuthStateChange (SIGNED_OUT) atualiza o estado
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        // Sessão salva com refresh token inválido/expirado: limpa e exige login,
+        // sem travar o app nem propagar erro (AuthApiError "Refresh Token Not Found").
+        if (error) {
+          await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          setSession(null);
+          setUser(null);
+          setIsLoading(false);
+          return;
         }
+        // Se havia sessão de uma execução anterior mas o usuário não marcou
+        // "manter conectado", encerra a sessão local e exige novo login.
+        if (session) {
+          const keep = await AsyncStorage.getItem(KEEP_LOGGED_IN_KEY);
+          if (keep === 'false') {
+            await supabase.auth.signOut({ scope: 'local' });
+            return; // onAuthStateChange (SIGNED_OUT) atualiza o estado
+          }
+        }
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      } catch {
+        // Qualquer falha ao restaurar a sessão → começa deslogado.
+        await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+        setSession(null);
+        setUser(null);
+        setIsLoading(false);
       }
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
     })();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(

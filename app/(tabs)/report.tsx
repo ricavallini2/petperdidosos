@@ -596,7 +596,12 @@ export default function ReportScreen() {
                   style={[styles.speciesPill, species === opt.value && styles.sizePillActive]}
                   onPress={() => setSpecies(opt.value)}
                 >
-                  <Text style={[styles.sizePillText, species === opt.value && styles.sizePillTextActive]}>
+                  <Text
+                    style={[styles.speciesPillText, species === opt.value && styles.sizePillTextActive]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
@@ -641,7 +646,15 @@ export default function ReportScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Porte</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Porte</Text>
+              <TouchableOpacity
+                style={[styles.unknownChip, sizeUnknown && styles.unknownChipActive]}
+                onPress={() => { const next = !sizeUnknown; setSizeUnknown(next); if (next) setSize(null); }}
+              >
+                <Text style={[styles.unknownChipText, sizeUnknown && styles.unknownChipTextActive]}>Não sei</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.sizeRow}>
               {(['pequeno', 'medio', 'grande'] as PetSize[]).map((opt) => (
                 <TouchableOpacity
@@ -654,19 +667,21 @@ export default function ReportScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={[styles.sizePill, sizeUnknown && styles.sizePillActive]}
-                onPress={() => { setSizeUnknown(true); setSize(null); }}
-              >
-                <Text style={[styles.sizePillText, sizeUnknown && styles.sizePillTextActive]}>Não sei</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Sexo</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Sexo</Text>
+              <TouchableOpacity
+                style={[styles.unknownChip, sex === 'desconhecido' && styles.unknownChipActive]}
+                onPress={() => setSex('desconhecido')}
+              >
+                <Text style={[styles.unknownChipText, sex === 'desconhecido' && styles.unknownChipTextActive]}>Não sei</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.sizeRow}>
-              {SEX_OPTIONS.map((opt) => (
+              {SEX_OPTIONS.filter((o) => o.value !== 'desconhecido').map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   style={[styles.sizePill, sex === opt.value && styles.sizePillActive]}
@@ -682,9 +697,17 @@ export default function ReportScreen() {
 
           {fullForm && (
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Idade</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Idade</Text>
+              <TouchableOpacity
+                style={[styles.unknownChip, ageGroup === 'desconhecido' && styles.unknownChipActive]}
+                onPress={() => setAgeGroup('desconhecido')}
+              >
+                <Text style={[styles.unknownChipText, ageGroup === 'desconhecido' && styles.unknownChipTextActive]}>Não sei</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.sizeRow}>
-              {AGE_OPTIONS.map((opt) => (
+              {AGE_OPTIONS.filter((o) => o.value !== 'desconhecido').map((opt) => (
                 <TouchableOpacity
                   key={opt.value}
                   style={[styles.sizePill, ageGroup === opt.value && styles.sizePillActive]}
@@ -984,7 +1007,7 @@ const styles = StyleSheet.create({
   extraPhotoImg: { width: '100%', height: '100%' },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '700', color: '#2F3542', marginBottom: 8, marginLeft: 4 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   unknownChip: {
     paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12,
     borderWidth: 1, borderColor: '#DFE4EA', backgroundColor: '#FFF', marginBottom: 8,
@@ -1004,11 +1027,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14, minHeight: 90, textAlignVertical: 'top',
   },
   sizeRow: { flexDirection: 'row', gap: 8 },
-  speciesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  speciesRow: { flexDirection: 'row', gap: 6 },
   speciesPill: {
-    flexGrow: 1, flexBasis: '30%', height: 52, borderRadius: 16, borderWidth: 1, borderColor: '#DFE4EA',
-    backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center',
+    flex: 1, flexBasis: 0, height: 50, borderRadius: 14, borderWidth: 1, borderColor: '#DFE4EA',
+    backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4,
   },
+  speciesPillText: { fontWeight: '700', color: '#747D8C', fontSize: 13.5 },
   sizePill: {
     flex: 1, height: 52, borderRadius: 16, borderWidth: 1, borderColor: '#DFE4EA',
     backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center',

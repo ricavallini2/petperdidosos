@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { matchPetByPhoto, contactOwner, PetMatch } from '../services/api';
 import { toast } from '../components/Feedback';
+import { formatDistance } from '../utils/formatDistance';
 
 const formatBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
 
@@ -71,7 +72,7 @@ export default function MatchOwnersScreen() {
         )}
         <View style={styles.metaRow}>
           {item.distance != null && (
-            <><Ionicons name="location" size={12} color="#FF4757" /><Text style={styles.meta}>{Math.round(item.distance)}m</Text></>
+            <><Ionicons name="location" size={12} color="#FF4757" /><Text style={styles.meta}>{formatDistance(item.distance)}</Text></>
           )}
           {item.lost_date && (
             <><Ionicons name="time-outline" size={12} color="#A4B0BE" style={{ marginLeft: 8 }} />

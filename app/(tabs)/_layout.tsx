@@ -71,6 +71,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="doacao"
+        options={{
+          title: 'Doação',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "heart-circle" : "heart-circle-outline"} size={28} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="chats"
         options={{
           title: 'Chats',
