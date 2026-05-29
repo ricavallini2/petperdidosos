@@ -11,14 +11,26 @@ import { Avatar } from '../../components/Avatar';
 
 type Tab = 'open' | 'closed';
 
-// Estado do chat → cor de acento + selo.
+// Estado do chat → cor de acento + selo. A cor segue o TIPO do pet
+// (perdido = vermelho, visto = laranja, resgatado = verde, doação = azul).
+const TYPE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  lost:     { label: 'Perdido',   color: '#FF4757', bg: '#FFF0F1' },
+  sighted:  { label: 'Visto',     color: '#F79F1F', bg: '#FFF6E5' },
+  rescued:  { label: 'Resgatado', color: '#20BF6B', bg: '#E8F8F5' },
+  donation: { label: 'Doação',    color: '#3B82F6', bg: '#EFF6FF' },
+};
+
 const chatState = (c: any): { label: string; color: string; bg: string } => {
+  const t = (c.pets?.type ?? 'lost') as keyof typeof TYPE_STYLE;
   if (c.status === 'closed') {
-    return c.found
-      ? { label: 'Resgatado', color: '#20BF6B', bg: '#E8F8F5' }
-      : { label: 'Encerrado', color: '#747D8C', bg: '#F1F2F6' };
+    if (!c.found) return { label: 'Encerrado', color: '#747D8C', bg: '#F1F2F6' };
+    // Concluído com sucesso: doação = "Doado" (azul); demais = "Resgatado" (verde).
+    return t === 'donation'
+      ? { label: 'Doado', color: '#3B82F6', bg: '#EFF6FF' }
+      : { label: 'Resgatado', color: '#20BF6B', bg: '#E8F8F5' };
   }
-  return { label: 'Ativo', color: '#FF4757', bg: '#FFF0F1' };
+  // Aberto: cor/rótulo conforme o tipo do alerta.
+  return TYPE_STYLE[t] ?? TYPE_STYLE.lost;
 };
 
 export default function ChatsScreen() {
@@ -114,7 +126,7 @@ export default function ChatsScreen() {
             const roleLabel = isTutor ? 'Buscador' : 'Tutor';
             return (
               <TouchableOpacity
-                style={[styles.chatRow, { borderLeftColor: st.color }]}
+                style={[styles.chatRow, { borderColor: st.color }]}
                 activeOpacity={0.85}
                 onPress={() => router.push(`/chat/${item.pet_id}?tutorId=${item.tutor_id}&finderId=${item.finder_id}`)}
               >
@@ -190,7 +202,7 @@ const styles = StyleSheet.create({
 
   chatRow: {
     backgroundColor: '#FFF', borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 13,
-    borderLeftWidth: 4, borderLeftColor: '#FF4757',
+    borderWidth: 1.5, borderLeftWidth: 5, borderColor: '#FF4757',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
   petAvatar: { width: 58, height: 58, borderRadius: 16, backgroundColor: '#DFE4EA' },

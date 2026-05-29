@@ -371,7 +371,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const TYPE_BADGE: Record<string, { label: string; verb: string; color: string; bg: string; icon: any }> = {
   lost:     { label: 'PET PERDIDO',   verb: 'Perdido',   color: '#FF4757', bg: '#FFF0F1', icon: 'megaphone' },
   sighted:  { label: 'PET VISTO',     verb: 'Visto',     color: '#F79F1F', bg: '#FFF6E5', icon: 'eye' },
-  rescued:  { label: 'PET RESGATADO', verb: 'Resgatado', color: '#20BF6B', bg: '#E8F8F5', icon: 'heart' },
+  rescued:  { label: 'PET RESGATADO', verb: 'Resgatado', color: '#20BF6B', bg: '#E8F8F5', icon: 'alert-circle' },
   donation: { label: 'PET DOANDO',    verb: 'Em doação', color: '#3B82F6', bg: '#EFF6FF', icon: 'gift' },
 };
 

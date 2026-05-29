@@ -9,13 +9,14 @@ import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, report
 import { COMPLETE_PROFILE_KEY } from '../login';
 import { useSearcherPresence } from '../../hooks/use-searcher-presence';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { customMapStyle } from '../../constants/mapStyle';
 import { Avatar } from '../../components/Avatar';
 import { toast, showConfirm, showActionSheet } from '../../components/Feedback';
 import { formatDistance } from '../../utils/formatDistance';
 import { colorMatches } from '../../utils/colorMatch';
+import { consumeMapFocus } from '../../utils/mapFocus';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -166,6 +167,9 @@ export default function MapScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const slideAnim = useState(new Animated.Value(300))[0];
   const mapRef = useRef<MapView | null>(null);
+  // Alvo de foco pendente (vindo de "Ver no mapa"/"Ver alerta"): se o mapa ainda
+  // não montou (location null), o onMapReady consome este alvo ao carregar.
+  const pendingFocusRef = useRef<{ latitude: number; longitude: number } | null>(null);
   // Box de 1 clique do pet capturado como PNG → Marker nativo acima da foto.
   // Indexado pelo ID do pet (não pela contagem), guardando a "assinatura" (nº de
   // avistamentos) usada. O box aparece assim que a 1ª captura termina e é
@@ -235,7 +239,6 @@ export default function MapScreen() {
     })
   ).current;
   const router = useRouter();
-  const focusParams = useLocalSearchParams<{ focus?: string; details?: string }>();
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -602,6 +605,7 @@ export default function MapScreen() {
     return c;
   }, [pets, speciesFilter, colorFilter]);
 
+
   // Toque no pet: 1º toque destaca (marcador aumenta); 2º toque abre o card
   const handlePetPress = (pet: PetSighting) => {
     if (selectedPet?.id === pet.id) {
@@ -680,40 +684,44 @@ export default function MapScreen() {
   }, [sightingDetails, selectedSighting?.id]);
 
   // Foco vindo da aba "Alertas" / do chat ("Ver alerta"): centraliza no pet e
-  // abre card/detalhes. Quando o pet não está na lista do mapa (fora do raio ou
-  // já não-ativo, ex.: avistamento confirmado), busca os dados por ID.
-  useEffect(() => {
-    const focusId = focusParams.focus;
-    const wantDetails = focusParams.details === '1';
-    if (!focusId) return;
-    // Limpa os params já no início para o efeito não re-disparar.
-    router.setParams({ focus: '', details: '' });
-    let cancelled = false;
-    (async () => {
-      let pet: any = pets.find((p) => p.id === focusId);
-      if (!pet) {
-        try {
-          const full = await getPetDetails(focusId);
-          pet = full ? { ...full, photo_url: full.main_photo_url } : null;
-        } catch {
-          pet = null;
-        }
+  // abre card/detalhes. O alvo chega pelo store mapFocus (não por params, que
+  // não propagam de forma confiável para o índice do grupo /(tabs)).
+  const focusOnPet = useCallback(async (petId: string, wantDetails: boolean) => {
+    let pet: any = pets.find((p) => p.id === petId);
+    if (!pet) {
+      try {
+        const full = await getPetDetails(petId);
+        pet = full ? { ...full, photo_url: full.main_photo_url } : null;
+      } catch {
+        pet = null;
       }
-      if (!pet || cancelled) return;
-      const lat = Number(pet.latitude);
-      const lng = Number(pet.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        mapRef.current?.animateToRegion(
-          { latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 },
-          600,
-        );
-      }
-      setSelectedPet(pet);
-      setCardOpen(true);
-      if (wantDetails) openDetails(pet);
-    })();
-    return () => { cancelled = true; };
-  }, [focusParams.focus, focusParams.details]);
+    }
+    if (!pet) return;
+    const lat = Number(pet.latitude);
+    const lng = Number(pet.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      // Guarda o alvo: se o mapa já está pronto anima agora; se ainda não montou
+      // (location carregando), o onMapReady consome este alvo ao carregar.
+      pendingFocusRef.current = { latitude: lat, longitude: lng };
+      mapRef.current?.animateToRegion(
+        { latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+        600,
+      );
+    }
+    setSelectedPet(pet);
+    setCardOpen(true);
+    if (wantDetails) openDetails(pet);
+  }, [pets]);
+
+  // Consome um pedido de foco sempre que o mapa ganha foco (troca de aba ou
+  // volta do chat). Pequeno atraso garante que o MapView já montou.
+  useFocusEffect(useCallback(() => {
+    const t = consumeMapFocus();
+    if (t) {
+      const id = setTimeout(() => focusOnPet(t.petId, t.details), 300);
+      return () => clearTimeout(id);
+    }
+  }, [focusOnPet]));
 
   useEffect(() => {
     (async () => {
@@ -952,7 +960,18 @@ export default function MapScreen() {
           longitudeDelta: 0.02,
         }}
         onMapReady={() => {
-          // Garante o zoom correto após o mapa carregar (alguns Android ignoram initialRegion)
+          // Se há um foco pendente (veio de "Ver no mapa"/"Ver alerta"), centraliza
+          // nele; senão, garante o zoom na minha localização (alguns Android
+          // ignoram o initialRegion).
+          const target = pendingFocusRef.current;
+          if (target) {
+            pendingFocusRef.current = null;
+            mapRef.current?.animateToRegion(
+              { latitude: target.latitude, longitude: target.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+              600,
+            );
+            return;
+          }
           mapRef.current?.animateToRegion({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -1365,7 +1384,7 @@ export default function MapScreen() {
             {([
               { key: 'lost', label: 'Perdido', color: '#FF4757', icon: 'megaphone' },
               { key: 'sighted', label: 'Visto', color: '#FFC312', icon: 'eye' },
-              { key: 'rescued', label: 'Resgatado', color: '#2ED573', icon: 'heart' },
+              { key: 'rescued', label: 'Resgatado', color: '#2ED573', icon: 'alert-circle' },
             ] as { key: 'lost' | 'sighted' | 'rescued' | 'donation'; label: string; color: string; icon: any }[]).map((it) => {
               const on = typeFilter[it.key];
               return (
@@ -1963,38 +1982,83 @@ export default function MapScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Raio de busca — ajustável com − / + e digitável (em km) */}
-            <Text style={styles.filterSectionLabel}>Raio de busca (km)</Text>
-            <View style={styles.radiusStepper}>
-              <TouchableOpacity
-                style={styles.radiusStepBtn}
-                onPress={() => setRadius((r) => Math.max(1000, r - 1000))}
-              >
-                <Ionicons name="remove" size={26} color="#FF4757" />
-              </TouchableOpacity>
-              <View style={styles.radiusValueWrap}>
-                <TextInput
-                  style={styles.radiusValueInput}
-                  keyboardType="numeric"
-                  value={customRadius !== '' ? customRadius : String(Math.round(radius / 1000))}
-                  onChangeText={(t) => {
-                    const digits = t.replace(/[^0-9]/g, '');
-                    setCustomRadius(digits);
-                    const v = Number(digits);
-                    if (Number.isFinite(v) && v > 0) setRadius(Math.min(500, v) * 1000);
-                  }}
-                  onBlur={() => setCustomRadius('')}
-                  maxLength={3}
-                  textAlign="center"
-                />
-                <Text style={styles.radiusValueUnit}>km</Text>
+            {/* Contadores por status (em tempo real) */}
+            {isLoadingPets ? (
+              <ActivityIndicator size="small" color="#FF4757" style={{ alignSelf: 'flex-start', marginBottom: 4 }} />
+            ) : (
+              <View style={styles.filterCountRow}>
+                {([
+                  { key: 'lost', color: '#FF4757', label: 'Perdido' },
+                  { key: 'sighted', color: '#FFC312', label: 'Visto' },
+                  { key: 'rescued', color: '#2ED573', label: 'Resgatado' },
+                ] as { key: 'lost' | 'sighted' | 'rescued'; color: string; label: string }[]).map((s) => {
+                  const n = typeCounts[s.key];
+                  return (
+                    <View key={s.key} style={[styles.statusCount, { backgroundColor: s.color + '1A' }]}>
+                      <View style={[styles.statusDot, { backgroundColor: s.color }]} />
+                      <Text style={[styles.statusCountText, { color: s.color }]}>
+                        {n} {s.label}{n === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
-              <TouchableOpacity
-                style={styles.radiusStepBtn}
-                onPress={() => { setCustomRadius(''); setRadius((r) => Math.min(500000, r + 1000)); }}
-              >
-                <Ionicons name="add" size={26} color="#FF4757" />
-              </TouchableOpacity>
+            )}
+
+            {/* Raio de busca — título, stepper (ajuste fino) e atalhos */}
+            <Text style={styles.filterSectionLabel}>Raio de busca</Text>
+            <View style={styles.radiusStepper}>
+                <TouchableOpacity
+                  style={styles.radiusStepBtn}
+                  onPress={() => { setCustomRadius(''); setRadius((r) => Math.max(1000, r - 1000)); }}
+                >
+                  <Ionicons name="remove" size={20} color="#FF4757" />
+                </TouchableOpacity>
+                <View style={styles.radiusValueWrap}>
+                  <TextInput
+                    style={styles.radiusValueInput}
+                    keyboardType="numeric"
+                    value={customRadius !== '' ? customRadius : String(Math.round(radius / 1000))}
+                    onChangeText={(t) => {
+                      const digits = t.replace(/[^0-9]/g, '');
+                      setCustomRadius(digits);
+                      const v = Number(digits);
+                      if (Number.isFinite(v) && v > 0) setRadius(Math.min(500, v) * 1000);
+                    }}
+                    onBlur={() => setCustomRadius('')}
+                    maxLength={3}
+                    textAlign="center"
+                  />
+                  <Text style={styles.radiusValueUnit}>km</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.radiusStepBtn}
+                  onPress={() => { setCustomRadius(''); setRadius((r) => Math.min(500000, r + 1000)); }}
+                >
+                  <Ionicons name="add" size={20} color="#FF4757" />
+                </TouchableOpacity>
+            </View>
+            <View style={styles.radiusPresetsRow}>
+              {[1, 5, 10, 30, 50].map((km) => {
+                const active = radius === km * 1000;
+                return (
+                  <TouchableOpacity
+                    key={km}
+                    style={[styles.radiusPreset, active && styles.radiusPresetActive]}
+                    onPress={() => { setCustomRadius(''); setRadius(km * 1000); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[styles.radiusPresetText, active && styles.radiusPresetTextActive]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >
+                      {km} km
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Espécie — todos os itens em uma única linha */}
@@ -2050,7 +2114,16 @@ export default function MapScreen() {
               style={styles.filterApplyBtn}
               onPress={() => { setCustomRadius(''); setShowFilter(false); }}
             >
-              <Text style={styles.filterApplyText}>Ver no mapa</Text>
+              <Text style={styles.filterApplyText}>
+                {isLoadingPets
+                  ? 'Buscando...'
+                  : (() => {
+                      const total = typeCounts.lost + typeCounts.sighted + typeCounts.rescued;
+                      return total === 0
+                        ? 'Nenhum pet encontrado'
+                        : `Ver ${total} ${total === 1 ? 'pet' : 'pets'}`;
+                    })()}
+              </Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -3702,7 +3775,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 20,
     padding: 20,
-    marginTop: 178, // logo abaixo da barra de filtro (header top:50 + headerTop + searchBar)
+    marginTop: 112, // alinha ao topo do box de filtro (header top:50 + headerTop ~52 + gap)
     marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
@@ -3714,7 +3787,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
@@ -3755,18 +3828,28 @@ const styles = StyleSheet.create({
   filterPillSelected: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
   filterPillText: { color: '#2F3542', fontWeight: '700', fontSize: 14 },
   filterPillTextSelected: { color: '#FFF' },
-  // Stepper do raio (− valor +) — compacto e centralizado (não estica).
-  radiusStepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  // Raio: título, stepper (ajuste fino, alinhado à esquerda) e atalhos abaixo.
+  radiusStepper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 6, marginBottom: 10 },
   radiusStepBtn: {
-    width: 46, height: 46, borderRadius: 13, backgroundColor: '#FFF0F1',
+    width: 36, height: 40, borderRadius: 11, backgroundColor: '#FFF0F1',
     justifyContent: 'center', alignItems: 'center',
   },
   radiusValueWrap: {
-    width: 116, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    height: 46, borderRadius: 13, backgroundColor: '#F1F2F6',
+    minWidth: 66, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3,
+    height: 40, borderRadius: 11, backgroundColor: '#F1F2F6',
   },
-  radiusValueInput: { fontSize: 22, fontWeight: '900', color: '#2F3542', minWidth: 40, padding: 0 },
-  radiusValueUnit: { fontSize: 14, fontWeight: '800', color: '#747D8C' },
+  radiusValueInput: { fontSize: 18, fontWeight: '900', color: '#2F3542', minWidth: 22, padding: 0 },
+  radiusValueUnit: { fontSize: 12.5, fontWeight: '800', color: '#747D8C' },
+  // Atalhos em linha cheia, pills de largura igual (sem scroll).
+  radiusPresetsRow: { flexDirection: 'row', gap: 7 },
+  radiusPreset: {
+    flex: 1, height: 44, borderRadius: 12, paddingHorizontal: 4,
+    backgroundColor: '#F1F2F6', borderWidth: 1, borderColor: 'transparent',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  radiusPresetActive: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
+  radiusPresetText: { fontSize: 14, fontWeight: '800', color: '#2F3542' },
+  radiusPresetTextActive: { color: '#FFF' },
   filterColorWrap: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#F1F2F6', borderRadius: 12, paddingHorizontal: 14, height: 48,
@@ -3784,6 +3867,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   filterApplyText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  filterCountRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+  statusCount: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, height: 28, borderRadius: 14,
+  },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusCountText: { fontSize: 12.5, fontWeight: '800' },
   filterCustomRow: { flexDirection: 'row', gap: 10, marginBottom: 6 },
   filterCustomInputWrap: {
     flex: 1, flexDirection: 'row', alignItems: 'center',

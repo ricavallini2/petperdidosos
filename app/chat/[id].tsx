@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Keyboa
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { requestMapFocus } from '../../utils/mapFocus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation } from '../../services/api';
@@ -266,7 +267,11 @@ export default function ChatScreen() {
         </View>
         <TouchableOpacity
           style={styles.sourceViewBtn}
-          onPress={() => router.push({ pathname: '/(tabs)', params: { focus: String(isTutor ? chat?.source_pet_id : chat?.pet_id), details: '1' } })}
+          onPress={() => {
+            const target = String(isTutor ? chat?.source_pet_id : chat?.pet_id);
+            requestMapFocus(target, true);
+            router.navigate('/(tabs)');
+          }}
         >
           <Text style={styles.sourceViewText}>Ver alerta</Text>
         </TouchableOpacity>

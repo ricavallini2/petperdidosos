@@ -43,7 +43,7 @@ const AGE_OPTIONS: { value: PetAgeGroup; label: string }[] = [
 const MODE_META: Record<PetType, { title: string; subtitle: string; colors: [string, string]; icon: string; cta: string }> = {
   lost:     { title: 'Perdi meu pet',   subtitle: 'Quanto mais detalhes, maior a chance de encontrar.', colors: ['#FF6B81', '#FF4757'], icon: 'megaphone', cta: 'Ativar Alerta' },
   sighted:  { title: 'Vi um pet',       subtitle: 'Avise a comunidade sobre um pet visto na rua.',       colors: ['#FFC312', '#F79F1F'], icon: 'eye',       cta: 'Publicar pet visto' },
-  rescued:  { title: 'Resgatei um pet', subtitle: 'Cadastre um pet que você resgatou e procura o dono.', colors: ['#26de81', '#20bf6b'], icon: 'heart',     cta: 'Publicar resgate' },
+  rescued:  { title: 'Resgatei um pet', subtitle: 'Cadastre um pet que você resgatou e procura o dono.', colors: ['#26de81', '#20bf6b'], icon: 'alert-circle', cta: 'Publicar resgate' },
   donation: { title: 'Doar um pet',     subtitle: 'Encontre um novo lar para um pet disponível para adoção.', colors: ['#60A5FA', '#3B82F6'], icon: 'gift', cta: 'Publicar doação' },
 };
 const MODE_ORDER: PetType[] = ['lost', 'sighted', 'rescued', 'donation'];
@@ -370,7 +370,7 @@ export default function ReportScreen() {
       const submittedMode = mode;
       const created = await createPetReport({
         userId: user?.id ?? '',
-        name: name.trim() || (mode === 'sighted' ? 'Pet visto' : mode === 'rescued' ? 'Pet resgatado' : mode === 'donation' ? 'Pet para doação' : ''),
+        name: name.trim() || (mode === 'sighted' ? 'Pet visto sem tutor' : mode === 'rescued' ? 'Pet resgatado' : mode === 'donation' ? 'Pet para doação' : ''),
         species: species ?? undefined,
         breed: breedUnknown ? undefined : (breed.trim() || undefined),
         color: colorUnknown ? undefined : (color.trim() || undefined),

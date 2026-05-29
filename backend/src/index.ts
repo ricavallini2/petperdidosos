@@ -2158,7 +2158,7 @@ app.get(
       .from('chats')
       .select(
         `id, pet_id, tutor_id, finder_id, status, found, closed_at, created_at, source_pet_id,
-         pets!chats_pet_id_fkey ( id, name, main_photo_url, status ),
+         pets!chats_pet_id_fkey ( id, name, type, main_photo_url, status ),
          tutor:profiles!chats_tutor_id_fkey ( id, full_name, photo_url, show_profile_photo ),
          finder:profiles!chats_finder_id_fkey ( id, full_name, photo_url, show_profile_photo )`
       )

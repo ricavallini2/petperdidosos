@@ -15,6 +15,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { showActionSheet, toast } from '../../components/Feedback';
 import { formatDistance } from '../../utils/formatDistance';
 import { colorMatches } from '../../utils/colorMatch';
+import { requestMapFocus } from '../../utils/mapFocus';
 
 const TYPE_META: Record<PetType, { label: string; color: string; bg: string }> = {
   lost: { label: 'Perdido', color: '#FF4757', bg: '#FFE5E9' },
@@ -209,8 +210,8 @@ export default function AlertasScreen() {
       message: 'O que deseja fazer?',
       icon: 'paw',
       options: [
-        { label: 'Ver detalhes', icon: 'information-circle-outline', primary: true, onPress: () => router.push({ pathname: '/(tabs)', params: { focus: pet.id, details: '1' } }) },
-        { label: 'Ver no mapa', icon: 'map-outline', onPress: () => router.push({ pathname: '/(tabs)', params: { focus: pet.id, details: '0' } }) },
+        { label: 'Ver detalhes', icon: 'information-circle-outline', primary: true, onPress: () => { requestMapFocus(pet.id, true); router.navigate('/(tabs)'); } },
+        { label: 'Ver no mapa', icon: 'map-outline', onPress: () => { requestMapFocus(pet.id, false); router.navigate('/(tabs)'); } },
       ],
     });
   };
