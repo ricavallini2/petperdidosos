@@ -709,8 +709,14 @@ export default function MapScreen() {
       );
     }
     setSelectedPet(pet);
-    setCardOpen(true);
-    if (wantDetails) openDetails(pet);
+    if (wantDetails) {
+      // "Ver detalhes": abre o box com as informações.
+      setCardOpen(true);
+      openDetails(pet);
+    } else {
+      // "Ver no mapa": apenas aponta/centraliza no pet (sem abrir o box).
+      setCardOpen(false);
+    }
   }, [pets]);
 
   // Consome um pedido de foco sempre que o mapa ganha foco (troca de aba ou
@@ -718,21 +724,38 @@ export default function MapScreen() {
   useFocusEffect(useCallback(() => {
     const t = consumeMapFocus();
     if (t) {
+      // Se veio da lista de Alertas com um raio maior que o do mapa, amplia a
+      // busca para que o pet (além do raio atual) apareça como marcador.
+      if (t.radius && t.radius > radius) setRadius(t.radius);
       const id = setTimeout(() => focusOnPet(t.petId, t.details), 300);
       return () => clearTimeout(id);
     }
-  }, [focusOnPet]));
+  }, [focusOnPet, radius]));
 
+  // Acompanha o GPS continuamente: o pin do usuário segue a posição real mesmo
+  // FORA do modo seguir. Aqui só atualizamos a `location` (move o pin) — NUNCA
+  // movemos a câmera; o recentrar do mapa fica exclusivo do modo seguir.
   useEffect(() => {
+    let sub: Location.LocationSubscription | undefined;
+    let cancelled = false;
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         setErrorMsg('Permissão para acessar localização foi negada.');
         return;
       }
-      let loc = await Location.getCurrentPositionAsync({});
-      setLocation(loc);
+      // Posição inicial rápida para o 1º render.
+      try {
+        const loc = await Location.getCurrentPositionAsync({});
+        if (!cancelled) setLocation(loc);
+      } catch {}
+      // Monitor contínuo (move o pin conforme o usuário anda).
+      sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 2000 },
+        (loc) => { if (!cancelled) setLocation(loc); }
+      );
     })();
+    return () => { cancelled = true; sub?.remove(); };
   }, []);
 
   // Após o cadastro + 1º acesso, lembra o usuário de completar o perfil.
@@ -839,6 +862,7 @@ export default function MapScreen() {
     const MOVE_HOLD = 8000;   // ms — mantém "em movimento" após o último passo
     const CADENCE = 250;      // ms — uma atualização de câmera a cada 250 ms
     const FOLLOW_ZOOM = 18;   // zoom fixo do seguir (evita o zoom "escorregar")
+    const CENTER_DEADZONE_M = 4; // só recentra se o usuário andou ≥ 4 m (ignora o "vagar" do GPS parado)
 
     // ---- 1€ Filter (Casiez et al.) — passa-baixa adaptativo p/ a bússola ----
     const ONE_EURO = { minCutoff: 0.1, beta: 0.1, dCutoff: 1.0 };
@@ -906,11 +930,11 @@ export default function MapScreen() {
           if (!cameraReady || !currentCenter) return;
           const moving = Date.now() - lastMoveTs < MOVE_HOLD;
           const target = moving ? gpsHeading : compassHeading;
-          // zona morta de 2° + checagem de centro: não anima se nada mudou.
+          // zona morta de 2° (heading) + dead-zone de ~4 m (centro): parado, o
+          // GPS pode vaguear que a câmera não persegue — elimina a tremida.
           const headingChanged = Math.abs(angleDelta(target, appliedHeading)) >= 2;
           const centerChanged =
-            Math.abs(currentCenter.latitude - appliedLat) > 1e-6 ||
-            Math.abs(currentCenter.longitude - appliedLng) > 1e-6;
+            distMeters(appliedLat, appliedLng, currentCenter.latitude, currentCenter.longitude) >= CENTER_DEADZONE_M;
           if (!headingChanged && !centerChanged) return;
           appliedHeading = target;
           appliedLat = currentCenter.latitude;
@@ -1712,8 +1736,11 @@ export default function MapScreen() {
                 <Text style={styles.sheetHeroName} numberOfLines={1}>{selectedPet.name}</Text>
                 {selectedPet.reward && selectedPet.reward.amount > 0 && (
                   <View style={styles.sheetHeroReward}>
-                    <Ionicons name="gift" size={12} color="#FFF" />
-                    <Text style={styles.sheetHeroRewardText}>{formatBRL(selectedPet.reward.amount)}</Text>
+                    <Text style={styles.sheetHeroRewardLabel}>Recompensa</Text>
+                    <View style={styles.sheetHeroRewardValueRow}>
+                      <Ionicons name="gift" size={12} color="#FFF" />
+                      <Text style={styles.sheetHeroRewardText}>{formatBRL(selectedPet.reward.amount)}</Text>
+                    </View>
                   </View>
                 )}
               </View>
@@ -2010,7 +2037,7 @@ export default function MapScreen() {
             <View style={styles.radiusStepper}>
                 <TouchableOpacity
                   style={styles.radiusStepBtn}
-                  onPress={() => { setCustomRadius(''); setRadius((r) => Math.max(1000, r - 1000)); }}
+                  onPress={() => { setCustomRadius(''); setRadius((r) => { const b = r >= 5000000 ? 50000 : r; return Math.max(1000, b - 1000); }); }}
                 >
                   <Ionicons name="remove" size={20} color="#FF4757" />
                 </TouchableOpacity>
@@ -2018,7 +2045,7 @@ export default function MapScreen() {
                   <TextInput
                     style={styles.radiusValueInput}
                     keyboardType="numeric"
-                    value={customRadius !== '' ? customRadius : String(Math.round(radius / 1000))}
+                    value={customRadius !== '' ? customRadius : (radius >= 5000000 ? 'BR' : String(Math.round(radius / 1000)))}
                     onChangeText={(t) => {
                       const digits = t.replace(/[^0-9]/g, '');
                       setCustomRadius(digits);
@@ -2033,9 +2060,19 @@ export default function MapScreen() {
                 </View>
                 <TouchableOpacity
                   style={styles.radiusStepBtn}
-                  onPress={() => { setCustomRadius(''); setRadius((r) => Math.min(500000, r + 1000)); }}
+                  onPress={() => { setCustomRadius(''); setRadius((r) => { const b = r >= 5000000 ? 50000 : r; return Math.min(500000, b + 1000); }); }}
                 >
                   <Ionicons name="add" size={20} color="#FF4757" />
+                </TouchableOpacity>
+
+                {/* Brasil todo — busca em todo o país */}
+                <TouchableOpacity
+                  style={[styles.brasilBtn, radius >= 5000000 && styles.brasilBtnActive]}
+                  activeOpacity={0.85}
+                  onPress={() => { setCustomRadius(''); setRadius(5000000); }}
+                >
+                  <Ionicons name="globe-outline" size={16} color={radius >= 5000000 ? '#FFF' : '#FF4757'} />
+                  <Text style={[styles.brasilBtnText, radius >= 5000000 && styles.brasilBtnTextActive]}>Brasil todo</Text>
                 </TouchableOpacity>
             </View>
             <View style={styles.radiusPresetsRow}>
@@ -3567,11 +3604,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
   },
   sheetHeroReward: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
     backgroundColor: '#2ED573',
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: 10,
     marginLeft: 8,
@@ -3580,6 +3615,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 6,
     elevation: 4,
+  },
+  sheetHeroRewardLabel: {
+    color: '#FFF',
+    fontWeight: '800',
+    fontSize: 8.5,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    opacity: 0.95,
+  },
+  sheetHeroRewardValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
   },
   sheetHeroRewardText: {
     color: '#FFF',
@@ -3775,7 +3824,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 20,
     padding: 20,
-    marginTop: 112, // alinha ao topo do box de filtro (header top:50 + headerTop ~52 + gap)
+    marginTop: 140, // logo abaixo do box de filtro (header top:50 + headerTop ~52 + searchBar)
     marginHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
@@ -3840,6 +3889,14 @@ const styles = StyleSheet.create({
   },
   radiusValueInput: { fontSize: 18, fontWeight: '900', color: '#2F3542', minWidth: 22, padding: 0 },
   radiusValueUnit: { fontSize: 12.5, fontWeight: '800', color: '#747D8C' },
+  brasilBtn: {
+    marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 5,
+    height: 40, paddingHorizontal: 12, borderRadius: 11,
+    backgroundColor: '#FFF0F1', borderWidth: 1, borderColor: '#FFD6DB',
+  },
+  brasilBtnActive: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
+  brasilBtnText: { fontSize: 12.5, fontWeight: '800', color: '#FF4757' },
+  brasilBtnTextActive: { color: '#FFF' },
   // Atalhos em linha cheia, pills de largura igual (sem scroll).
   radiusPresetsRow: { flexDirection: 'row', gap: 7 },
   radiusPreset: {

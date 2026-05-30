@@ -1965,6 +1965,11 @@ app.post(
 
     const adopterId = chat.finder_id;
 
+    // Demais interessados (fila) — capturados antes de fechar para notificar.
+    const { data: others } = await supabase
+      .from('chats').select('id, finder_id')
+      .eq('pet_id', chat.pet_id).eq('status', 'open').neq('id', chat.id);
+
     // Marca a doação como concluída e relaciona o adotante.
     await supabase.from('pets')
       .update({ status: 'doado', adopter_user_id: adopterId })
@@ -1989,7 +1994,54 @@ app.post(
       type: 'donation_confirmed', pet_id: chat.pet_id, chat_id: chat.id,
     });
 
+    // Avisa os demais interessados (fila) que o pet já foi adotado.
+    if (others && others.length > 0) {
+      await supabase.from('notifications').insert(
+        others.map((o: any) => ({
+          user_id: o.finder_id,
+          title: 'Pet adotado',
+          body: `${pet.name} já foi adotado por outra pessoa. Obrigado pelo interesse! 🐾`,
+          type: 'donation_closed', pet_id: chat.pet_id, chat_id: o.id,
+        }))
+      );
+    }
+
     res.json({ success: true });
+  })
+);
+
+// ============================================================================
+// FILA DE ADOÇÃO — chats abertos de um pet em doação, em ordem de chegada.
+// A posição é derivada (sem schema): 1 = primeiro a chamar (atual da vez).
+// ============================================================================
+async function donationQueue(petId: string) {
+  const { data } = await supabase
+    .from('chats')
+    .select('id, finder_id, created_at')
+    .eq('pet_id', petId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: true });
+  return data ?? [];
+}
+
+app.get(
+  '/chats/:chatId/queue',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const me = authedId(req);
+    const { chatId } = req.params;
+
+    const { data: chat } = await supabase
+      .from('chats').select('id, pet_id, tutor_id, finder_id, status').eq('id', chatId).single();
+    if (!chat) return res.status(404).json({ error: 'Chat não encontrado' });
+    if (chat.tutor_id !== me && chat.finder_id !== me) return res.status(403).json({ error: 'Sem permissão' });
+
+    const { data: pet } = await supabase.from('pets').select('type').eq('id', chat.pet_id).single();
+    if (!pet || pet.type !== 'donation') return res.json({ isDonation: false, position: 0, total: 0 });
+
+    const queue = await donationQueue(chat.pet_id);
+    const idx = queue.findIndex((c: any) => c.id === chat.id);
+    res.json({ isDonation: true, total: queue.length, position: idx >= 0 ? idx + 1 : 0 });
   })
 );
 
@@ -2147,6 +2199,49 @@ app.post(
 );
 
 // ============================================================================
+// CONTA — exclusão (LGPD). Remove o usuário e seus dados (cascata no banco).
+// Bloqueia quando há pendências financeiras (saldo ou recompensas ativas) e
+// limpa referências que não são cascata (adopter_user_id).
+// ============================================================================
+app.delete(
+  '/user/account',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+
+    // 1. Pendências financeiras → bloqueia
+    const { data: prof } = await supabase
+      .from('profiles').select('wallet_balance').eq('id', userId).maybeSingle();
+    if (prof && Number(prof.wallet_balance) > 0) {
+      return res.status(400).json({ error: 'Você possui saldo na carteira. Faça o saque antes de excluir a conta.' });
+    }
+
+    const { count: activeRewards } = await supabase
+      .from('rewards')
+      .select('id', { count: 'exact', head: true })
+      .eq('payer_user_id', userId)
+      .in('status', ['pending', 'locked']);
+    if ((activeRewards ?? 0) > 0) {
+      return res.status(400).json({ error: 'Você tem recompensas ativas em casos abertos. Encerre ou cancele esses casos antes de excluir a conta.' });
+    }
+
+    // 2. Limpa referências NO ACTION (adoção) que bloqueariam a exclusão
+    await supabase.from('pets').update({ adopter_user_id: null }).eq('adopter_user_id', userId);
+
+    // 3. Remove o usuário do Auth — cascata apaga profiles + dados relacionados.
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) {
+      // Provável bloqueio por histórico financeiro (rewards.payer RESTRICT).
+      return res.status(409).json({
+        error: 'Não foi possível excluir automaticamente devido ao histórico da conta. Fale com o suporte para concluir a exclusão.',
+      });
+    }
+
+    res.json({ success: true });
+  })
+);
+
+// ============================================================================
 // CHATS — listar chats do usuário
 // ============================================================================
 app.get(
@@ -2292,6 +2387,12 @@ app.post(
 
     const chat = await getOrCreateChat(petId, senderId, receiverId);
 
+    // Conversa encerrada não aceita novas mensagens (resposta limpa em vez do
+    // erro do trigger do banco, que viraria 500).
+    if (chat.status === 'closed') {
+      return res.status(400).json({ error: 'Esta conversa foi encerrada.' });
+    }
+
     const { data: msg, error } = await supabase
       .from('messages')
       .insert({ chat_id: chat.id, sender_id: senderId, content, photo_url })
@@ -2436,17 +2537,43 @@ app.post(
     const userId = authedId(req);
 
     const { data: chat, error: chatErr } = await supabase
-      .from('chats').select('id, tutor_id, finder_id, status').eq('id', chatId).single();
+      .from('chats').select('id, pet_id, tutor_id, finder_id, status').eq('id', chatId).single();
     if (chatErr || !chat) return res.status(404).json({ error: 'Chat não encontrado' });
     if (chat.tutor_id !== userId && chat.finder_id !== userId) {
       return res.status(403).json({ error: 'Sem permissão' });
     }
     if (chat.status === 'closed') return res.json({ success: true });
 
+    // Fila de adoção: se este chat de doação estava na frente, o próximo assume.
+    let advance: { chatId: string; finderId: string; petName: string } | null = null;
+    const { data: pet } = await supabase
+      .from('pets').select('name, type').eq('id', chat.pet_id).single();
+    if (pet?.type === 'donation') {
+      const queue = await donationQueue(chat.pet_id);
+      if (queue[0]?.id === chatId && queue[1]) {
+        advance = { chatId: queue[1].id, finderId: queue[1].finder_id, petName: pet.name };
+      }
+    }
+
     await supabase
       .from('chats')
       .update({ status: 'closed', closed_at: new Date().toISOString(), found: false })
       .eq('id', chatId);
+
+    // Avisa o novo 1º da fila que chegou a vez dele.
+    if (advance) {
+      await supabase.from('notifications').insert({
+        user_id: advance.finderId,
+        title: 'É a sua vez! 🐾',
+        body: `Chegou sua vez de conversar sobre a adoção de ${advance.petName}.`,
+        type: 'donation_turn', pet_id: chat.pet_id, chat_id: advance.chatId,
+      });
+      await supabase.from('messages').insert({
+        chat_id: advance.chatId, sender_id: chat.tutor_id,
+        content: '🐾 É a sua vez na fila de adoção! O doador está disponível para conversar.',
+        system: true,
+      });
+    }
 
     res.json({ success: true });
   })

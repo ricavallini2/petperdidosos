@@ -569,6 +569,14 @@ export const concludeDonation = async (petId: string): Promise<{ success: boolea
   return response.json();
 };
 
+// Fila de adoção: posição deste chat (doação) na ordem de chegada.
+export interface DonationQueue { isDonation: boolean; position: number; total: number; }
+export const getDonationQueue = async (chatId: string): Promise<DonationQueue> => {
+  const response = await authedFetch(`${API_URL}/chats/${chatId}/queue`);
+  if (!response.ok) return { isDonation: false, position: 0, total: 0 };
+  return response.json();
+};
+
 export const closeChat = async (chatId: string, userId: string, found: boolean) => {
   const response = await authedFetch(`${API_URL}/chats/${chatId}/close`, {
     method: 'POST',
@@ -620,6 +628,16 @@ export const requestWithdraw = async (userId: string, amount: number) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ amount }),
   });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+// Exclusão de conta (LGPD). O backend valida pendências e remove os dados.
+export const deleteAccount = async (): Promise<{ success: boolean }> => {
+  const response = await authedFetch(`${API_URL}/user/account`, { method: 'DELETE' });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error || `Erro HTTP: ${response.status}`);

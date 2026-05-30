@@ -126,7 +126,7 @@ export default function ChatsScreen() {
             const roleLabel = isTutor ? 'Buscador' : 'Tutor';
             return (
               <TouchableOpacity
-                style={[styles.chatRow, { borderColor: st.color }]}
+                style={[styles.chatRow, { borderLeftColor: st.color }]}
                 activeOpacity={0.85}
                 onPress={() => router.push(`/chat/${item.pet_id}?tutorId=${item.tutor_id}&finderId=${item.finder_id}`)}
               >
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
 
   chatRow: {
     backgroundColor: '#FFF', borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 13,
-    borderWidth: 1.5, borderLeftWidth: 5, borderColor: '#FF4757',
+    borderLeftWidth: 5, borderLeftColor: '#FF4757',
     shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3,
   },
   petAvatar: { width: 58, height: 58, borderRadius: 16, backgroundColor: '#DFE4EA' },

@@ -35,6 +35,8 @@ const TYPE_META: Record<string, { icon: any; color: string; bg: string }> = {
   sighting_claim:     { icon: 'paw',                 color: '#FF4757', bg: '#FFF0F1' },
   sighting_confirmed: { icon: 'checkmark-circle',    color: '#2ED573', bg: '#E8F8F5' },
   donation_confirmed: { icon: 'home',                color: '#3B82F6', bg: '#EFF6FF' },
+  donation_turn:      { icon: 'hand-left',           color: '#3B82F6', bg: '#EFF6FF' },
+  donation_closed:    { icon: 'close-circle',        color: '#747D8C', bg: '#F1F2F6' },
   rescue_confirmed:   { icon: 'trophy',              color: '#2ED573', bg: '#E8F8F5' },
   withdraw:           { icon: 'cash-outline',        color: '#FFA502', bg: '#FFF6E5' },
   reward:             { icon: 'gift',                color: '#2ED573', bg: '#E8F8F5' },
@@ -116,6 +118,8 @@ export default function NotificationsScreen() {
       case 'sighting_claim':
       case 'sighting_confirmed':
       case 'donation_confirmed':
+      case 'donation_turn':
+      case 'donation_closed':
         return chatLink('Abrir conversa');
       case 'rescue_confirmed':
         return n.pet_id ? { route: `/pet/case/${n.pet_id}`, label: 'Ver ficha do caso' } : null;

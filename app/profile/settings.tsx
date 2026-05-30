@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -35,8 +35,6 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [showOnMap, setShowOnMap] = useState(true);
-  const [showProfilePhoto, setShowProfilePhoto] = useState(true);
   const [channel, setChannel] = useState<Channel>('email');
   const [radius, setRadius] = useState(5000);
   const [travel, setTravel] = useState<TravelMode>('driving');
@@ -48,8 +46,6 @@ export default function SettingsScreen() {
       try {
         const s = await getUserSettings(user.id);
         if (s) {
-          setShowOnMap(!!s.show_on_map);
-          setShowProfilePhoto(s.show_profile_photo !== false);
           setChannel(s.notification_channel ?? 'email');
           setRadius(Number(s.default_search_radius_m ?? 5000));
           setTravel(s.travel_mode ?? 'driving');
@@ -99,39 +95,15 @@ export default function SettingsScreen() {
       </LinearGradient>
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 140 }}>
-        {/* Visibilidade */}
-        <Text style={styles.sectionTitle}>Privacidade</Text>
-        <View style={styles.row}>
-          <View style={styles.rowLabel}>
-            <Ionicons name="eye-outline" size={20} color="#FF4757" />
-            <View>
-              <Text style={styles.rowTitle}>Aparecer como buscador no mapa</Text>
-              <Text style={styles.rowSub}>Outros usuários veem seu ícone próximo</Text>
-            </View>
+        {/* Atalho para Privacidade e Segurança (visibilidade no mapa, foto, senha) */}
+        <TouchableOpacity style={styles.privacyLink} onPress={() => router.push('/profile/privacy')} activeOpacity={0.7}>
+          <Ionicons name="shield-checkmark-outline" size={20} color="#FF4757" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowTitle}>Privacidade e Segurança</Text>
+            <Text style={styles.rowSub}>Visibilidade no mapa, foto de perfil, senha</Text>
           </View>
-          <Switch
-            value={showOnMap}
-            onValueChange={(v) => { setShowOnMap(v); persist({ show_on_map: v }); }}
-            trackColor={{ false: '#DFE4EA', true: '#FF4757' }}
-            thumbColor="#FFF"
-          />
-        </View>
-
-        <View style={[styles.row, { marginTop: 10 }]}>
-          <View style={styles.rowLabel}>
-            <Ionicons name="person-circle-outline" size={20} color="#FF4757" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>Mostrar minha foto de perfil</Text>
-              <Text style={styles.rowSub}>Se desligado, outros veem uma imagem padrão</Text>
-            </View>
-          </View>
-          <Switch
-            value={showProfilePhoto}
-            onValueChange={(v) => { setShowProfilePhoto(v); persist({ show_profile_photo: v }); }}
-            trackColor={{ false: '#DFE4EA', true: '#FF4757' }}
-            thumbColor="#FFF"
-          />
-        </View>
+          <Ionicons name="chevron-forward" size={20} color="#C7CDD4" />
+        </TouchableOpacity>
 
         {/* Notificações */}
         <Text style={styles.sectionTitle}>Notificações de novos alertas</Text>
@@ -234,6 +206,10 @@ const styles = StyleSheet.create({
   rowLabel: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, paddingRight: 8 },
   rowTitle: { fontSize: 15, color: '#2F3542', fontWeight: '700' },
   rowSub: { fontSize: 12, color: '#A4B0BE', marginTop: 2 },
+  privacyLink: {
+    backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginTop: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
 
   optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   optionCard: {

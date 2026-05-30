@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { requestMapFocus } from '../../utils/mapFocus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation } from '../../services/api';
+import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation, getDonationQueue } from '../../services/api';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
@@ -55,6 +55,7 @@ export default function ChatScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [relatedPhoto, setRelatedPhoto] = useState<string | null>(null);
   const [relatedType, setRelatedType] = useState<string | null>(null); // tipo do alerta de origem (sighted/rescued)
+  const [queue, setQueue] = useState<{ position: number; total: number } | null>(null); // fila de adoção
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -95,6 +96,7 @@ export default function ChatScreen() {
   }, [insets.bottom, kbPad]);
 
   const isTutor = !!pet && !!user && pet.user_id === user.id;
+  const isDonation = pet?.type === 'donation';
   const tutorId = (tutorIdParam as string) || pet?.user_id;
   // "outro participante" = quem não é o user. Vem do URL quando possível.
   const otherId = (() => {
@@ -158,11 +160,26 @@ export default function ChatScreen() {
     try {
       const data = await getMessages(petId as string, user.id, otherId);
       setMessages(data);
-      // descobre o chat atual procurando na lista de chats do user
+      // Descobre o chat ATUAL pelo par (pet + o outro participante). Filtrar só
+      // por pet_id pegava o chat errado quando o usuário tem mais de uma conversa
+      // sobre o mesmo pet (ex.: doador com vários interessados) — o que deixava
+      // um chat encerrado parecer aberto.
       try {
         const chats = await listUserChats(user.id);
-        const current = chats.find((c: any) => c.pet_id === petId && (c.tutor_id === user.id || c.finder_id === user.id));
+        const current = chats.find((c: any) =>
+          c.pet_id === petId &&
+          ((c.tutor_id === user.id && c.finder_id === otherId) ||
+           (c.finder_id === user.id && c.tutor_id === otherId))
+        );
         setChat(current ?? null);
+        // Fila de adoção (só para doação): posição/total deste chat.
+        if (current?.id && current.pets?.type === 'donation' && current.status === 'open') {
+          getDonationQueue(current.id)
+            .then((q) => setQueue(q.isDonation ? { position: q.position, total: q.total } : null))
+            .catch(() => {});
+        } else {
+          setQueue(null);
+        }
       } catch {}
       setIsLoading(false);
     } catch (error) {
@@ -296,17 +313,41 @@ export default function ChatScreen() {
           <Text style={styles.sourceTitle}>Doação de pet</Text>
           <Text style={styles.sourceSub}>
             {iAmTutor
-              ? 'Converse com o interessado. Ao definir o adotante, confirme a doação abaixo.'
+              ? 'Converse com o interessado. Ao definir o adotante, toque em “Confirmar doação” no topo para concluir.'
               : 'Converse com o doador sobre as regras de adoção e seu interesse.'}
           </Text>
         </View>
       </View>
-      {iAmTutor && !chatClosed && !alreadyConfirmed && (
-        <TouchableOpacity style={[styles.confirmSightingBtn, { backgroundColor: '#3B82F6' }]} onPress={handleConfirmDonation} disabled={confirming}>
-          {confirming
-            ? <ActivityIndicator color="#FFF" size="small" />
-            : <><Ionicons name="checkmark-circle" size={18} color="#FFF" /><Text style={styles.confirmSightingText}>Confirmar doação para este usuário</Text></>}
-        </TouchableOpacity>
+
+      {/* Fila de adoção */}
+      {!chatClosed && queue && queue.total > 0 && (
+        iAmTutor ? (
+          // Doador: vê o tamanho da fila e a ordem deste interessado.
+          <View style={styles.queueBanner}>
+            <Ionicons name="people-outline" size={16} color="#3B82F6" />
+            <Text style={styles.queueText}>
+              {queue.total === 1
+                ? 'Apenas este interessado na fila.'
+                : `${queue.total} interessados na fila. Este é o ${queue.position}º a chamar.`}
+            </Text>
+          </View>
+        ) : queue.position === 1 ? (
+          // Adotante na vez.
+          <View style={[styles.queueBanner, styles.queueBannerTurn]}>
+            <Ionicons name="hand-left" size={16} color="#1E7E47" />
+            <Text style={[styles.queueText, { color: '#1E7E47' }]}>
+              É a sua vez! Converse com o doador sobre a adoção.
+            </Text>
+          </View>
+        ) : (
+          // Adotante aguardando na fila.
+          <View style={styles.queueBanner}>
+            <Ionicons name="time-outline" size={16} color="#3B82F6" />
+            <Text style={styles.queueText}>
+              Fila de adoção • você é o {queue.position}º de {queue.total}. Avisaremos quando for a sua vez.
+            </Text>
+          </View>
+        )
       )}
     </View>
   ) : null;
@@ -495,17 +536,36 @@ export default function ChatScreen() {
               <View style={styles.cancelHeaderBtn}><Ionicons name="close" size={20} color="#FF4757" /></View>
               <Text style={[styles.headerActionLabel, { color: '#FF4757' }]} numberOfLines={2}>Encerrar Chat</Text>
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.85} onPress={() => setShowCloseModal(true)} style={styles.headerAction}>
-              <LinearGradient
-                colors={['#2ED573', '#26B765']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.confirmHeaderBtn}
-              >
-                <Ionicons name="checkmark-done" size={20} color="#FFF" />
-              </LinearGradient>
-              <Text style={[styles.headerActionLabel, { color: '#26B765' }]} numberOfLines={1}>Encontrei</Text>
-            </TouchableOpacity>
+            {isDonation ? (
+              // Doação: confirma a adoção, relacionando este adotante ao pet.
+              !alreadyConfirmed && (
+                <TouchableOpacity activeOpacity={0.85} onPress={handleConfirmDonation} disabled={confirming} style={styles.headerAction}>
+                  <LinearGradient
+                    colors={['#60A5FA', '#3B82F6']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.confirmHeaderBtn}
+                  >
+                    {confirming
+                      ? <ActivityIndicator size="small" color="#FFF" />
+                      : <Ionicons name="heart-circle" size={20} color="#FFF" />}
+                  </LinearGradient>
+                  <Text style={[styles.headerActionLabel, { color: '#3B82F6' }]} numberOfLines={1}>Confirmar doação</Text>
+                </TouchableOpacity>
+              )
+            ) : (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => setShowCloseModal(true)} style={styles.headerAction}>
+                <LinearGradient
+                  colors={['#2ED573', '#26B765']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.confirmHeaderBtn}
+                >
+                  <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                </LinearGradient>
+                <Text style={[styles.headerActionLabel, { color: '#26B765' }]} numberOfLines={1}>Encontrei</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : !isTutor && !chatClosed && chat ? (
           <TouchableOpacity onPress={handleCancelChat} disabled={cancelling} style={styles.headerAction}>
@@ -521,7 +581,9 @@ export default function ChatScreen() {
         <View style={styles.closedBanner}>
           <Ionicons name="lock-closed" size={16} color="#747D8C" />
           <Text style={styles.closedBannerText}>
-            {chat?.found ? 'Resgate confirmado neste chat.' : 'Chat encerrado pelo tutor.'}
+            {chat?.found
+              ? (isDonation ? 'Doação confirmada neste chat.' : 'Resgate confirmado neste chat.')
+              : 'Chat encerrado pelo tutor.'}
           </Text>
         </View>
       )}
@@ -923,6 +985,12 @@ const styles = StyleSheet.create({
   sourceThumbFallback: { width: 46, height: 46, borderRadius: 10, backgroundColor: '#D6E0FF', justifyContent: 'center', alignItems: 'center' },
   sourceTitle: { fontSize: 14, fontWeight: '800', color: '#2F3542' },
   sourceSub: { fontSize: 12, color: '#5A6478', marginTop: 1 },
+  queueBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: '#EFF6FF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginTop: 10,
+  },
+  queueBannerTurn: { backgroundColor: '#EAFBF1' },
+  queueText: { flex: 1, fontSize: 12.5, color: '#3B82F6', fontWeight: '700', lineHeight: 17 },
   sourceViewBtn: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#3B5BDB', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12 },
   sourceViewText: { color: '#3B5BDB', fontWeight: '800', fontSize: 13 },
   confirmSightingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#20BF6B', height: 44, borderRadius: 12 },

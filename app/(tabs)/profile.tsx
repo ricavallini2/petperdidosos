@@ -182,12 +182,15 @@ export default function ProfileScreen() {
                 <Text style={styles.statLabel}>Ativos</Text>
               </View>
               <View style={styles.statDivider} />
-              <View style={styles.statBox}>
+              <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={() => router.push('/profile/wallet')}>
                 <Text style={[styles.statNumber, { color: '#2ED573' }]}>
                   R$ {Number(profileData?.wallet_balance ?? 0).toFixed(2)}
                 </Text>
-                <Text style={styles.statLabel}>Carteira</Text>
-              </View>
+                <View style={styles.statLabelRow}>
+                  <Text style={styles.statLabel}>Carteira</Text>
+                  <Ionicons name="chevron-forward" size={12} color="#A4B0BE" />
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -262,7 +265,7 @@ export default function ProfileScreen() {
           <MenuOption icon="wallet-outline" title="Carteira e Saques" iconColor="#FF4757" onPress={() => router.push('/profile/wallet')} />
           <PremiumMenuOption isPremium={premium.isPremium} onPress={() => router.push('/profile/premium')} />
           <MenuOption icon="settings-outline" title="Configurações" iconColor="#FF4757" onPress={() => router.push('/profile/settings')} />
-          <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => toast.info('Em breve.')} />
+          <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => router.push('/profile/privacy')} />
           <MenuOption icon="headset-outline" title="Central de Ajuda" iconColor="#FF4757" onPress={() => router.push('/support')} />
           <MenuOption icon="receipt-outline" title="Meus Chamados" iconColor="#FF4757" onPress={() => router.push('/profile/tickets')} />
         </View>

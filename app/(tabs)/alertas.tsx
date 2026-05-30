@@ -210,8 +210,8 @@ export default function AlertasScreen() {
       message: 'O que deseja fazer?',
       icon: 'paw',
       options: [
-        { label: 'Ver detalhes', icon: 'information-circle-outline', primary: true, onPress: () => { requestMapFocus(pet.id, true); router.navigate('/(tabs)'); } },
-        { label: 'Ver no mapa', icon: 'map-outline', onPress: () => { requestMapFocus(pet.id, false); router.navigate('/(tabs)'); } },
+        { label: 'Ver detalhes', icon: 'information-circle-outline', primary: true, onPress: () => { requestMapFocus(pet.id, true, radius); router.navigate('/(tabs)'); } },
+        { label: 'Ver no mapa', icon: 'map-outline', onPress: () => { requestMapFocus(pet.id, false, radius); router.navigate('/(tabs)'); } },
       ],
     });
   };
