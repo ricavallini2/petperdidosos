@@ -40,6 +40,12 @@ export interface AdminOverview {
   activeUsers24h: number;
   premiumActive: number;
   premiumLifetime: number;
+  activeCases: number;
+  resolvedThisMonth: number;
+  activeDonations: number;
+  adoptionsThisMonth: number;
+  sightingsPending: number;
+  openReports: number;
   activeRewardsTotal: number;
   openTickets: number | null;
   revenueMonth: number;
@@ -291,6 +297,247 @@ export interface SubscriptionsFilters {
   offset?: number;
 }
 
+export interface CasoRow {
+  id: string;
+  name: string;
+  breed: string | null;
+  color: string | null;
+  size: string | null;
+  species: string | null;
+  type: string;
+  sex: string | null;
+  age_group: string | null;
+  status: string;
+  main_photo_url: string | null;
+  lost_date: string | null;
+  created_at: string;
+  tutor: { id: string; full_name: string | null };
+}
+
+export interface CasosPage {
+  rows: CasoRow[];
+  total: number;
+}
+
+export interface CasosFilters {
+  type?: string;
+  species?: string;
+  status?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CasoDetail {
+  pet: {
+    id: string;
+    name: string;
+    breed: string | null;
+    color: string | null;
+    size: string | null;
+    species: string | null;
+    type: string;
+    sex: string | null;
+    age_group: string | null;
+    status: string;
+    description: string | null;
+    extra_info: string | null;
+    main_photo_url: string | null;
+    latitude: number;
+    longitude: number;
+    lost_date: string | null;
+    allow_contact: boolean | null;
+    is_with_finder: boolean | null;
+    adoption_rules: string | null;
+    consent_responsibility: boolean | null;
+    consent_searched_owner: boolean | null;
+    adopter_user_id: string | null;
+    created_at: string;
+    updated_at: string;
+    user_id: string;
+  };
+  tutor: {
+    id: string;
+    full_name: string | null;
+    photo_url: string | null;
+    phone: string | null;
+    status: string;
+    email: string | null;
+  } | null;
+  adopter: {
+    id: string;
+    full_name: string | null;
+    photo_url: string | null;
+    phone: string | null;
+    status: string;
+    is_admin: boolean;
+    email: string | null;
+  } | null;
+  photos: { id: string; photo_url: string; position: number }[];
+  rewards: {
+    id: string;
+    amount: number;
+    fee_amount: number;
+    status: string;
+    finder_user_id: string | null;
+    paid_at: string | null;
+    refunded_at: string | null;
+    created_at: string;
+  }[];
+  chats: {
+    id: string;
+    status: string;
+    found: boolean | null;
+    finder_id: string;
+    finderName: string | null;
+    created_at: string;
+    closed_at: string | null;
+  }[];
+  sightings: {
+    id: string;
+    finder_id: string;
+    finderName: string | null;
+    latitude: number;
+    longitude: number;
+    photo_url: string | null;
+    message: string | null;
+    ai_match_score: number | null;
+    confirmed_by_tutor: boolean | null;
+    created_at: string;
+  }[];
+}
+
+export interface DoacaoRow {
+  id: string;
+  name: string;
+  breed: string | null;
+  color: string | null;
+  size: string | null;
+  species: string | null;
+  sex: string | null;
+  age_group: string | null;
+  status: string;
+  main_photo_url: string | null;
+  created_at: string;
+  tutor: { id: string; full_name: string | null };
+  adopter: { id: string; full_name: string | null } | null;
+}
+
+export interface DoacoesPage {
+  rows: DoacaoRow[];
+  total: number;
+}
+
+export interface DoacoesFilters {
+  status?: string;
+  species?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface SightingRow {
+  id: string;
+  latitude: number;
+  longitude: number;
+  photo_url: string | null;
+  message: string | null;
+  ai_match_score: number | null;
+  confirmed_by_tutor: boolean | null;
+  created_at: string;
+  pet: { id: string; name: string | null; main_photo_url: string | null } | null;
+  finder: { id: string; full_name: string | null };
+}
+
+export interface SightingsPage {
+  rows: SightingRow[];
+  total: number;
+}
+
+export interface SightingsFilters {
+  q?: string;
+  confirmed?: 'yes' | 'no' | 'pending';
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ReportRow {
+  id: string;
+  reason: string;
+  status: string;
+  created_at: string;
+  chat_id: string | null;
+  reporter: { id: string; full_name: string | null };
+  reported: { id: string; full_name: string | null };
+  pet: { id: string; name: string | null } | null;
+}
+
+export interface ReportsPage {
+  rows: ReportRow[];
+  total: number;
+}
+
+export interface ReportsFilters {
+  status?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ReportProfile {
+  id: string;
+  full_name: string | null;
+  photo_url: string | null;
+  phone: string | null;
+  status: string;
+  is_admin: boolean;
+  email: string | null;
+}
+
+export interface ReportDetail {
+  report: {
+    id: string;
+    reporter_id: string;
+    reported_id: string;
+    chat_id: string | null;
+    pet_id: string | null;
+    reason: string;
+    status: string;
+    admin_notes: string | null;
+    created_at: string;
+  };
+  reporter: ReportProfile | null;
+  reported: ReportProfile | null;
+  pet: {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    main_photo_url: string | null;
+    user_id: string;
+  } | null;
+  messages: {
+    id: string;
+    sender_id: string;
+    content: string | null;
+    photo_url: string | null;
+    created_at: string;
+  }[];
+}
+
+export interface ReportPatch {
+  status?: string;
+  admin_notes?: string | null;
+}
+
 export const api = {
   // Verifica sessão + papel de admin. Lança erro 403 se não for admin.
   me: (): Promise<AdminProfile> => authFetch('/admin/me'),
@@ -422,5 +669,69 @@ export const api = {
     authFetch('/admin/subscriptions/grant', {
       method: 'POST',
       body: JSON.stringify({ userId, planType }),
+    }),
+
+  // Casos — lista de pets (perdidos, vistos, resgatados) com filtros.
+  casos: (filters: CasosFilters = {}): Promise<CasosPage> => {
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return authFetch('/admin/pets' + (query ? `?${query}` : ''));
+  },
+
+  // Casos — detalhe (pet, tutor, fotos, recompensas, chats, avistamentos).
+  casoDetail: (id: string): Promise<CasoDetail> => authFetch(`/admin/pets/${id}`),
+
+  // Casos — altera o status (ativo/pausado/encontrado/cancelado).
+  setCasoStatus: (id: string, status: string): Promise<CasoDetail['pet']> =>
+    authFetch(`/admin/pets/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // Avistamentos — lista com filtros.
+  sightings: (filters: SightingsFilters = {}): Promise<SightingsPage> => {
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return authFetch('/admin/sightings' + (query ? `?${query}` : ''));
+  },
+
+  // Avistamentos — exclui (spam, abuso, duplicidade).
+  deleteSighting: (id: string): Promise<{ success: boolean }> =>
+    authFetch(`/admin/sightings/${id}`, { method: 'DELETE' }),
+
+  // Doações — lista de pets em adoção (type='donation').
+  donations: (filters: DoacoesFilters = {}): Promise<DoacoesPage> => {
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return authFetch('/admin/donations' + (query ? `?${query}` : ''));
+  },
+
+  // Denúncias — lista com filtros.
+  reports: (filters: ReportsFilters = {}): Promise<ReportsPage> => {
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return authFetch('/admin/reports' + (query ? `?${query}` : ''));
+  },
+
+  // Denúncias — detalhe (denunciante, denunciado, caso ligado, mensagens do chat).
+  reportDetail: (id: string): Promise<ReportDetail> => authFetch(`/admin/reports/${id}`),
+
+  // Denúncias — atualiza status e/ou notas internas.
+  updateReport: (id: string, patch: ReportPatch): Promise<ReportDetail['report']> =>
+    authFetch(`/admin/reports/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
     }),
 };

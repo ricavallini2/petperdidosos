@@ -3,6 +3,24 @@ import { api, AdminOverview } from '../lib/api';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
+function Card({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="stat-card">
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+      {sub && <span className="stat-sub">{sub}</span>}
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState('');
@@ -24,47 +42,55 @@ export function Dashboard() {
   return (
     <div className="page">
       <h1>Visão geral</h1>
-      <p className="page-desc">Resumo de usuários, assinaturas, chamados e financeiro.</p>
+      <p className="page-desc">
+        Panorama operacional do PetPerdidoSOS — pessoas, casos, atendimento e receita.
+      </p>
 
       {error && <div className="alert error">{error}</div>}
 
-      <div className="card-grid">
-        <div className="stat-card">
-          <span className="stat-label">Usuários</span>
-          <span className="stat-value">{num(data?.users)}</span>
+      <section className="fin-section">
+        <h2>Comunidade</h2>
+        <div className="card-grid">
+          <Card label="Usuários" value={num(data?.users)} />
+          <Card label="Ativos (últimas 24h)" value={num(data?.activeUsers24h)} />
+          <Card
+            label="Assinantes Premium"
+            value={num(data?.premiumActive)}
+            sub={
+              data?.premiumLifetime != null
+                ? `${data.premiumLifetime} vitalício(s)`
+                : undefined
+            }
+          />
         </div>
-        <div className="stat-card">
-          <span className="stat-label">Usuários ativos (24h)</span>
-          <span className="stat-value">{num(data?.activeUsers24h)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Assinantes Premium</span>
-          <span className="stat-value">{num(data?.premiumActive)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Premium vitalícios</span>
-          <span className="stat-value">{num(data?.premiumLifetime)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Recompensas ativas</span>
-          <span className="stat-value">{brl(data?.activeRewardsTotal)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Chamados abertos</span>
-          <span className="stat-value">{num(data?.openTickets)}</span>
-        </div>
-        <div className="stat-card">
-          <span className="stat-label">Receita do mês</span>
-          <span className="stat-value">{brl(data?.revenueMonth)}</span>
-        </div>
-      </div>
+      </section>
 
-      {!loading && data?.openTickets == null && (
-        <div className="notice">
-          A contagem de chamados abertos ficará disponível quando o módulo de
-          <code>Chamados</code> for implementado.
+      <section className="fin-section">
+        <h2>Operação</h2>
+        <div className="card-grid">
+          <Card label="Casos ativos" value={num(data?.activeCases)} />
+          <Card label="Resolvidos no mês" value={num(data?.resolvedThisMonth)} />
+          <Card label="Doações ativas" value={num(data?.activeDonations)} />
+          <Card label="Adoções no mês" value={num(data?.adoptionsThisMonth)} />
         </div>
-      )}
+      </section>
+
+      <section className="fin-section">
+        <h2>Atendimento</h2>
+        <div className="card-grid">
+          <Card label="Avistamentos pendentes" value={num(data?.sightingsPending)} />
+          <Card label="Denúncias abertas" value={num(data?.openReports)} />
+          <Card label="Chamados abertos" value={num(data?.openTickets)} />
+        </div>
+      </section>
+
+      <section className="fin-section">
+        <h2>Receita</h2>
+        <div className="card-grid">
+          <Card label="Receita do mês" value={brl(data?.revenueMonth)} />
+          <Card label="Recompensas em garantia" value={brl(data?.activeRewardsTotal)} />
+        </div>
+      </section>
     </div>
   );
 }

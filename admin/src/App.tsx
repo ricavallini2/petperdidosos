@@ -9,6 +9,13 @@ import { ChamadoDetalhe } from './pages/ChamadoDetalhe';
 import { Assinaturas } from './pages/Assinaturas';
 import { Usuarios } from './pages/Usuarios';
 import { UsuarioDetalhe } from './pages/UsuarioDetalhe';
+import { Casos } from './pages/Casos';
+import { CasoDetalhe } from './pages/CasoDetalhe';
+import { Denuncias } from './pages/Denuncias';
+import { DenunciaDetalhe } from './pages/DenunciaDetalhe';
+import { Doacoes } from './pages/Doacoes';
+import { DoacaoDetalhe } from './pages/DoacaoDetalhe';
+import { Avistamentos } from './pages/Avistamentos';
 import { Configuracoes } from './pages/Configuracoes';
 
 export function App() {
@@ -31,6 +38,13 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/casos" element={<Casos />} />
+        <Route path="/casos/:id" element={<CasoDetalhe />} />
+        <Route path="/denuncias" element={<Denuncias />} />
+        <Route path="/denuncias/:id" element={<DenunciaDetalhe />} />
+        <Route path="/doacoes" element={<Doacoes />} />
+        <Route path="/doacoes/:id" element={<DoacaoDetalhe />} />
+        <Route path="/avistamentos" element={<Avistamentos />} />
         <Route path="/financeiro" element={<Financeiro />} />
         <Route path="/chamados" element={<Chamados />} />
         <Route path="/chamados/:id" element={<ChamadoDetalhe />} />

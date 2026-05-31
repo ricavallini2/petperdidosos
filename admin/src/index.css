@@ -59,9 +59,15 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ---- Navegação ---- */
-nav { margin-top: 30px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+nav { margin-top: 24px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.nav-group { display: flex; flex-direction: column; gap: 3px; }
+.nav-group-title {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.7px; color: var(--muted-2);
+  padding: 0 14px; margin-bottom: 4px;
+}
 .nav-link {
-  padding: 11px 14px; border-radius: 12px; font-size: 14px; font-weight: 600;
+  padding: 10px 14px; border-radius: 12px; font-size: 14px; font-weight: 600;
   color: var(--muted); transition: background 0.14s, color 0.14s;
 }
 .nav-link:hover { background: var(--accent-bg); color: var(--accent); }
@@ -393,3 +399,39 @@ td.empty-state, td.muted-text { text-align: center; padding: 24px; }
   display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer;
 }
 .grant-confirm .btn-save { align-self: flex-start; }
+
+/* ---- Casos / Pets ---- */
+.badge.type-lost     { background: var(--accent-bg); color: var(--accent); }
+.badge.type-sighted  { background: var(--amber-bg); color: var(--amber); }
+.badge.type-rescued  { background: var(--green-bg); color: var(--green); }
+.badge.type-donation { background: var(--blue-bg); color: var(--blue); }
+
+.badge.petst-ativo      { background: var(--accent-bg); color: var(--accent); }
+.badge.petst-pausado    { background: var(--amber-bg); color: var(--amber); }
+.badge.petst-encontrado { background: var(--green-bg); color: var(--green); }
+.badge.petst-cancelado  { background: #eef0f4; color: #5a6273; }
+
+.badge.rwd-pending  { background: var(--amber-bg); color: var(--amber); }
+.badge.rwd-locked   { background: var(--blue-bg); color: var(--blue); }
+.badge.rwd-paid     { background: var(--green-bg); color: var(--green); }
+.badge.rwd-refunded { background: #eef0f4; color: #5a6273; }
+
+.photo-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.photo-thumb {
+  width: 140px; height: 140px; object-fit: cover;
+  border-radius: 12px; border: 1px solid var(--border);
+  display: block; cursor: zoom-in; transition: transform 0.14s;
+}
+.photo-thumb:hover { transform: scale(1.03); }
+
+/* ---- Denúncias ---- */
+.badge.rep-pending   { background: var(--amber-bg); color: var(--amber); }
+.badge.rep-reviewing { background: var(--blue-bg); color: var(--blue); }
+.badge.rep-dismissed { background: #eef0f4; color: #5a6273; }
+.badge.rep-actioned  { background: var(--green-bg); color: var(--green); }
+
+/* ---- Doações ---- */
+.badge.dn-ativo      { background: var(--blue-bg); color: var(--blue); }
+.badge.dn-pausado    { background: var(--amber-bg); color: var(--amber); }
+.badge.dn-encontrado { background: var(--green-bg); color: var(--green); }
+.badge.dn-cancelado  { background: #eef0f4; color: #5a6273; }

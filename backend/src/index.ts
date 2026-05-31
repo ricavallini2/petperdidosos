@@ -262,11 +262,58 @@ app.get(
       0
     );
 
+    // KPIs operacionais (casos, doações, avistamentos, denúncias)
+    const [
+      { count: activeCases },
+      { count: resolvedThisMonth },
+      { count: activeDonations },
+      { count: adoptionsThisMonth },
+      { count: sightingsPending },
+      { count: openReports },
+    ] = await Promise.all([
+      supabase
+        .from('pets')
+        .select('id', { count: 'exact', head: true })
+        .neq('type', 'donation')
+        .eq('status', 'ativo'),
+      supabase
+        .from('pets')
+        .select('id', { count: 'exact', head: true })
+        .neq('type', 'donation')
+        .eq('status', 'encontrado')
+        .gte('updated_at', monthStart),
+      supabase
+        .from('pets')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'donation')
+        .eq('status', 'ativo'),
+      supabase
+        .from('pets')
+        .select('id', { count: 'exact', head: true })
+        .eq('type', 'donation')
+        .eq('status', 'encontrado')
+        .gte('updated_at', monthStart),
+      supabase
+        .from('sightings')
+        .select('id', { count: 'exact', head: true })
+        .is('confirmed_by_tutor', null),
+      supabase
+        .from('reports')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending', 'reviewing']),
+    ]);
+
     res.json({
       users: users ?? 0,
       activeUsers24h,
       premiumActive,
       premiumLifetime,
+      activeCases: activeCases ?? 0,
+      resolvedThisMonth: resolvedThisMonth ?? 0,
+      activeDonations: activeDonations ?? 0,
+      adoptionsThisMonth: adoptionsThisMonth ?? 0,
+      sightingsPending: sightingsPending ?? 0,
+      openReports: openReports ?? 0,
       activeRewardsTotal: Number(activeRewardsTotal.toFixed(2)),
       openTickets: openTickets ?? 0,
       revenueMonth: Number((feeRevenue + subRevenue).toFixed(2)),
@@ -1265,6 +1312,558 @@ app.post(
     });
 
     res.json({ success: true, subscription: sub });
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Casos — gestão dos pets pelo painel admin (perdidos, vistos, resgatados)
+// Doações (type='donation') ficam no módulo próprio.
+// ----------------------------------------------------------------------------
+const PET_STATUS = ['ativo', 'pausado', 'encontrado', 'cancelado'];
+
+app.get(
+  '/admin/pets',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const type = str(req.query.type);
+    const species = str(req.query.species);
+    const status = str(req.query.status);
+    const q = str(req.query.q);
+    const from = str(req.query.from);
+    const toRaw = str(req.query.to);
+    const to = toRaw ? (toRaw.length === 10 ? `${toRaw}T23:59:59.999Z` : toRaw) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    let query = supabase
+      .from('pets')
+      .select(
+        'id, name, breed, color, size, species, type, sex, age_group, status, main_photo_url, lost_date, created_at, user_id'
+      )
+      .neq('type', 'donation')
+      .order('created_at', { ascending: false });
+    if (type) query = query.eq('type', type);
+    if (species) query = query.eq('species', species);
+    if (status) query = query.eq('status', status);
+    if (from) query = query.gte('created_at', from);
+    if (to) query = query.lte('created_at', to);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const pets = (data ?? []) as Record<string, unknown>[];
+    const userIds = [...new Set(pets.map((p) => p.user_id as string))];
+    const { data: profs } = userIds.length
+      ? await supabase.from('profiles').select('id, full_name').in('id', userIds)
+      : { data: [] as Record<string, unknown>[] };
+    const nameMap = new Map((profs ?? []).map((p) => [p.id as string, p.full_name]));
+
+    let rows = pets.map((p) => ({
+      id: p.id,
+      name: p.name,
+      breed: p.breed,
+      color: p.color,
+      size: p.size,
+      species: p.species,
+      type: p.type,
+      sex: p.sex,
+      age_group: p.age_group,
+      status: p.status,
+      main_photo_url: p.main_photo_url,
+      lost_date: p.lost_date,
+      created_at: p.created_at,
+      tutor: { id: p.user_id, full_name: nameMap.get(p.user_id as string) ?? null },
+    }));
+
+    if (q) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) =>
+        [r.name, r.breed, r.tutor.full_name].some(
+          (f) => typeof f === 'string' && f.toLowerCase().includes(needle)
+        )
+      );
+    }
+
+    res.json({ rows: rows.slice(offset, offset + limit), total: rows.length });
+  })
+);
+
+// Detalhe de um caso: pet + tutor + fotos + recompensas + chats + avistamentos
+app.get(
+  '/admin/pets/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { data: pet } = await supabase
+      .from('pets')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (!pet) return res.status(404).json({ error: 'Caso não encontrado' });
+
+    const [tutorRes, photosRes, rewardsRes, chatsRes, sightingsRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, full_name, photo_url, phone, status')
+        .eq('id', pet.user_id)
+        .maybeSingle(),
+      supabase
+        .from('pet_photos')
+        .select('id, photo_url, position')
+        .eq('pet_id', id)
+        .order('position'),
+      supabase
+        .from('rewards')
+        .select('id, amount, fee_amount, status, finder_user_id, paid_at, refunded_at, created_at')
+        .eq('pet_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('chats')
+        .select('id, status, found, finder_id, created_at, closed_at')
+        .eq('pet_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('sightings')
+        .select(
+          'id, finder_id, latitude, longitude, photo_url, message, ai_match_score, confirmed_by_tutor, created_at'
+        )
+        .eq('pet_id', id)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    const tutor = tutorRes.data ?? null;
+    const { data: tutorAuth } = pet.user_id
+      ? await supabase.auth.admin.getUserById(pet.user_id)
+      : { data: null };
+
+    // Resolve nomes dos finders (chats + sightings)
+    const finderIds = [
+      ...((chatsRes.data ?? []) as Record<string, unknown>[]).map((c) => c.finder_id as string),
+      ...((sightingsRes.data ?? []) as Record<string, unknown>[]).map((s) => s.finder_id as string),
+    ].filter(Boolean);
+    const uniqFinders = [...new Set(finderIds)];
+    const { data: finderProfs } = uniqFinders.length
+      ? await supabase.from('profiles').select('id, full_name').in('id', uniqFinders)
+      : { data: [] as Record<string, unknown>[] };
+    const finderMap = new Map((finderProfs ?? []).map((p) => [p.id as string, p.full_name]));
+
+    // Adotante (relevante para pets do tipo donation)
+    let adopter: Record<string, unknown> | null = null;
+    if (pet.adopter_user_id) {
+      const { data: adopterProf } = await supabase
+        .from('profiles')
+        .select('id, full_name, photo_url, phone, status, is_admin')
+        .eq('id', pet.adopter_user_id)
+        .maybeSingle();
+      if (adopterProf) {
+        const { data: adopterAuth } = await supabase.auth.admin.getUserById(
+          pet.adopter_user_id
+        );
+        adopter = { ...adopterProf, email: adopterAuth?.user?.email ?? null };
+      }
+    }
+
+    res.json({
+      pet,
+      tutor: tutor ? { ...tutor, email: tutorAuth?.user?.email ?? null } : null,
+      adopter,
+      photos: photosRes.data ?? [],
+      rewards: rewardsRes.data ?? [],
+      chats: ((chatsRes.data ?? []) as Record<string, unknown>[]).map((c) => ({
+        ...c,
+        finderName: finderMap.get(c.finder_id as string) ?? null,
+      })),
+      sightings: ((sightingsRes.data ?? []) as Record<string, unknown>[]).map((s) => ({
+        ...s,
+        finderName: finderMap.get(s.finder_id as string) ?? null,
+      })),
+    });
+  })
+);
+
+// Altera o status de um caso (pausar / reativar / marcar encontrado / cancelar)
+app.patch(
+  '/admin/pets/:id/status',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body ?? {};
+    if (!PET_STATUS.includes(status)) {
+      return res.status(400).json({ error: "status deve ser 'ativo', 'pausado', 'encontrado' ou 'cancelado'" });
+    }
+    const { data, error } = await supabase
+      .from('pets')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Caso não encontrado' });
+    res.json(data);
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Denúncias — moderação de relatos de abuso/fraude
+// ----------------------------------------------------------------------------
+const REPORT_STATUS = ['pending', 'reviewing', 'dismissed', 'actioned'];
+
+app.get(
+  '/admin/reports',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const status = str(req.query.status);
+    const q = str(req.query.q);
+    const from = str(req.query.from);
+    const toRaw = str(req.query.to);
+    const to = toRaw ? (toRaw.length === 10 ? `${toRaw}T23:59:59.999Z` : toRaw) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    let query = supabase
+      .from('reports')
+      .select('id, reporter_id, reported_id, chat_id, pet_id, reason, status, created_at')
+      .order('created_at', { ascending: false });
+    if (status) query = query.eq('status', status);
+    if (from) query = query.gte('created_at', from);
+    if (to) query = query.lte('created_at', to);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const reports = (data ?? []) as Record<string, unknown>[];
+    const userIds = [
+      ...new Set(
+        [
+          ...reports.map((r) => r.reporter_id as string),
+          ...reports.map((r) => r.reported_id as string),
+        ].filter(Boolean)
+      ),
+    ];
+    const petIds = [
+      ...new Set(reports.map((r) => r.pet_id as string).filter(Boolean)),
+    ];
+
+    const { data: profs } = userIds.length
+      ? await supabase.from('profiles').select('id, full_name').in('id', userIds)
+      : { data: [] as Record<string, unknown>[] };
+    const { data: pets } = petIds.length
+      ? await supabase.from('pets').select('id, name').in('id', petIds)
+      : { data: [] as Record<string, unknown>[] };
+    const nameMap = new Map((profs ?? []).map((p) => [p.id as string, p.full_name]));
+    const petMap = new Map((pets ?? []).map((p) => [p.id as string, p.name]));
+
+    let rows = reports.map((r) => ({
+      id: r.id,
+      reason: r.reason,
+      status: r.status,
+      created_at: r.created_at,
+      chat_id: r.chat_id,
+      reporter: {
+        id: r.reporter_id,
+        full_name: nameMap.get(r.reporter_id as string) ?? null,
+      },
+      reported: {
+        id: r.reported_id,
+        full_name: nameMap.get(r.reported_id as string) ?? null,
+      },
+      pet: r.pet_id
+        ? { id: r.pet_id, name: petMap.get(r.pet_id as string) ?? null }
+        : null,
+    }));
+
+    if (q) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) =>
+        [r.reporter.full_name, r.reported.full_name, r.reason].some(
+          (f) => typeof f === 'string' && f.toLowerCase().includes(needle)
+        )
+      );
+    }
+
+    res.json({ rows: rows.slice(offset, offset + limit), total: rows.length });
+  })
+);
+
+// Detalhe: denúncia + denunciante + denunciado + caso ligado + mensagens do chat
+app.get(
+  '/admin/reports/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { data: report } = await supabase
+      .from('reports')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (!report) return res.status(404).json({ error: 'Denúncia não encontrada' });
+
+    const [reporterRes, reportedRes, petRes, msgsRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, full_name, photo_url, phone, status, is_admin')
+        .eq('id', report.reporter_id)
+        .maybeSingle(),
+      supabase
+        .from('profiles')
+        .select('id, full_name, photo_url, phone, status, is_admin')
+        .eq('id', report.reported_id)
+        .maybeSingle(),
+      report.pet_id
+        ? supabase
+            .from('pets')
+            .select('id, name, type, status, main_photo_url, user_id')
+            .eq('id', report.pet_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      report.chat_id
+        ? supabase
+            .from('messages')
+            .select('id, sender_id, content, photo_url, created_at')
+            .eq('chat_id', report.chat_id)
+            .order('created_at', { ascending: true })
+            .limit(200)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ]);
+
+    const [reporterAuth, reportedAuth] = await Promise.all([
+      supabase.auth.admin.getUserById(report.reporter_id),
+      supabase.auth.admin.getUserById(report.reported_id),
+    ]);
+
+    const reporter = reporterRes.data
+      ? { ...reporterRes.data, email: reporterAuth.data?.user?.email ?? null }
+      : null;
+    const reported = reportedRes.data
+      ? { ...reportedRes.data, email: reportedAuth.data?.user?.email ?? null }
+      : null;
+
+    res.json({
+      report,
+      reporter,
+      reported,
+      pet: petRes.data,
+      messages: msgsRes.data ?? [],
+    });
+  })
+);
+
+// Atualiza status e/ou notas internas da denúncia
+app.patch(
+  '/admin/reports/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const body = req.body ?? {};
+    const update: Record<string, unknown> = {};
+    if (body.status !== undefined) {
+      if (!REPORT_STATUS.includes(body.status)) {
+        return res.status(400).json({ error: 'status inválido' });
+      }
+      update.status = body.status;
+    }
+    if (body.admin_notes !== undefined) {
+      update.admin_notes =
+        typeof body.admin_notes === 'string' && body.admin_notes.trim()
+          ? body.admin_notes.trim()
+          : null;
+    }
+    const { data, error } = await supabase
+      .from('reports')
+      .update(update)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Denúncia não encontrada' });
+    res.json(data);
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Doações — gestão dos pets em adoção (type='donation')
+// Compartilha o /admin/pets/:id (detalhe) e /admin/pets/:id/status (ações).
+// ----------------------------------------------------------------------------
+app.get(
+  '/admin/donations',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const status = str(req.query.status);
+    const species = str(req.query.species);
+    const q = str(req.query.q);
+    const from = str(req.query.from);
+    const toRaw = str(req.query.to);
+    const to = toRaw ? (toRaw.length === 10 ? `${toRaw}T23:59:59.999Z` : toRaw) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    let query = supabase
+      .from('pets')
+      .select(
+        'id, name, breed, color, size, species, sex, age_group, status, main_photo_url, created_at, user_id, adopter_user_id'
+      )
+      .eq('type', 'donation')
+      .order('created_at', { ascending: false });
+    if (status) query = query.eq('status', status);
+    if (species) query = query.eq('species', species);
+    if (from) query = query.gte('created_at', from);
+    if (to) query = query.lte('created_at', to);
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const pets = (data ?? []) as Record<string, unknown>[];
+    const userIds = [
+      ...new Set(
+        [
+          ...pets.map((p) => p.user_id as string),
+          ...pets.map((p) => p.adopter_user_id as string),
+        ].filter(Boolean)
+      ),
+    ];
+    const { data: profs } = userIds.length
+      ? await supabase.from('profiles').select('id, full_name').in('id', userIds)
+      : { data: [] as Record<string, unknown>[] };
+    const nameMap = new Map((profs ?? []).map((p) => [p.id as string, p.full_name]));
+
+    let rows = pets.map((p) => ({
+      id: p.id,
+      name: p.name,
+      breed: p.breed,
+      color: p.color,
+      size: p.size,
+      species: p.species,
+      sex: p.sex,
+      age_group: p.age_group,
+      status: p.status,
+      main_photo_url: p.main_photo_url,
+      created_at: p.created_at,
+      tutor: {
+        id: p.user_id,
+        full_name: nameMap.get(p.user_id as string) ?? null,
+      },
+      adopter: p.adopter_user_id
+        ? {
+            id: p.adopter_user_id,
+            full_name: nameMap.get(p.adopter_user_id as string) ?? null,
+          }
+        : null,
+    }));
+
+    if (q) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) =>
+        [r.name, r.breed, r.tutor.full_name, r.adopter?.full_name].some(
+          (f) => typeof f === 'string' && f.toLowerCase().includes(needle)
+        )
+      );
+    }
+
+    res.json({ rows: rows.slice(offset, offset + limit), total: rows.length });
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Avistamentos — visão e moderação dos sightings
+// ----------------------------------------------------------------------------
+app.get(
+  '/admin/sightings',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const q = str(req.query.q);
+    const confirmed = str(req.query.confirmed); // 'yes' | 'no' | 'pending'
+    const from = str(req.query.from);
+    const toRaw = str(req.query.to);
+    const to = toRaw ? (toRaw.length === 10 ? `${toRaw}T23:59:59.999Z` : toRaw) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    let query = supabase
+      .from('sightings')
+      .select(
+        'id, pet_id, finder_id, latitude, longitude, photo_url, message, ai_match_score, confirmed_by_tutor, created_at'
+      )
+      .order('created_at', { ascending: false });
+    if (from) query = query.gte('created_at', from);
+    if (to) query = query.lte('created_at', to);
+    if (confirmed === 'yes') query = query.eq('confirmed_by_tutor', true);
+    else if (confirmed === 'no') query = query.eq('confirmed_by_tutor', false);
+    else if (confirmed === 'pending') query = query.is('confirmed_by_tutor', null);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    const sightings = (data ?? []) as Record<string, unknown>[];
+
+    const petIds = [...new Set(sightings.map((s) => s.pet_id as string).filter(Boolean))];
+    const userIds = [...new Set(sightings.map((s) => s.finder_id as string).filter(Boolean))];
+    const [petsRes, profsRes] = await Promise.all([
+      petIds.length
+        ? supabase.from('pets').select('id, name, main_photo_url').in('id', petIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+      userIds.length
+        ? supabase.from('profiles').select('id, full_name').in('id', userIds)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ]);
+    const petMap = new Map(
+      (petsRes.data ?? []).map((p) => [p.id as string, p])
+    );
+    const nameMap = new Map(
+      (profsRes.data ?? []).map((p) => [p.id as string, p.full_name])
+    );
+
+    let rows = sightings.map((s) => {
+      const pet = s.pet_id
+        ? (petMap.get(s.pet_id as string) as Record<string, unknown> | undefined)
+        : null;
+      return {
+        id: s.id,
+        latitude: Number(s.latitude),
+        longitude: Number(s.longitude),
+        photo_url: s.photo_url,
+        message: s.message,
+        ai_match_score: s.ai_match_score != null ? Number(s.ai_match_score) : null,
+        confirmed_by_tutor: s.confirmed_by_tutor,
+        created_at: s.created_at,
+        pet: s.pet_id
+          ? {
+              id: s.pet_id,
+              name: pet?.name ?? null,
+              main_photo_url: pet?.main_photo_url ?? null,
+            }
+          : null,
+        finder: {
+          id: s.finder_id,
+          full_name: nameMap.get(s.finder_id as string) ?? null,
+        },
+      };
+    });
+
+    if (q) {
+      const needle = q.toLowerCase();
+      rows = rows.filter((r) =>
+        [r.pet?.name, r.finder.full_name, r.message].some(
+          (f) => typeof f === 'string' && f.toLowerCase().includes(needle)
+        )
+      );
+    }
+
+    res.json({ rows: rows.slice(offset, offset + limit), total: rows.length });
+  })
+);
+
+// Excluir um avistamento (spam, abuso, duplicidade)
+app.delete(
+  '/admin/sightings/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { error } = await supabase.from('sightings').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ success: true });
   })
 );
 
