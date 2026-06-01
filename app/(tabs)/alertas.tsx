@@ -334,7 +334,7 @@ export default function AlertasScreen() {
           </View>
         )}
 
-        <Text style={styles.filterLabel}>Raio de busca</Text>
+        <Text style={styles.filterLabel}>Raio de busca do seu local atual</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {RADIUS_OPTIONS.map((r) => (
             <TouchableOpacity
@@ -345,6 +345,13 @@ export default function AlertasScreen() {
               <Text style={[styles.chipText, radius === r && styles.chipTextActive]}>{r >= 1000 ? `${r / 1000}km` : `${r}m`}</Text>
             </TouchableOpacity>
           ))}
+          {/* Brasil todo — busca em todo o país */}
+          <TouchableOpacity
+            style={[styles.chip, radius >= 5000000 && styles.chipActive]}
+            onPress={() => setRadius(5000000)}
+          >
+            <Text style={[styles.chipText, radius >= 5000000 && styles.chipTextActive]}>Brasil todo</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
