@@ -6,6 +6,7 @@ import {
   TICKET_PRIORITY_LABEL,
   TICKET_CATEGORY_LABEL,
 } from './Chamados';
+import { confirmDialog, toast } from '../lib/ui';
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -83,9 +84,10 @@ export function ChamadoDetalhe() {
         admin_notes: notes.trim() || null,
       });
       setTriageOk(true);
+      toast.success('Triagem salva.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao salvar a triagem');
+      toast.error(e instanceof Error ? e.message : 'Falha ao salvar a triagem');
     } finally {
       setSavingTriage(false);
     }
@@ -97,9 +99,10 @@ export function ChamadoDetalhe() {
     try {
       await api.replyTicket(id, replyText.trim());
       setReplyText('');
+      toast.success('Resposta enviada ao usuário.');
       refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao enviar a resposta');
+      toast.error(e instanceof Error ? e.message : 'Falha ao enviar a resposta');
     } finally {
       setReplying(false);
     }
@@ -107,15 +110,20 @@ export function ChamadoDetalhe() {
 
   const quickStatus = async (newStatus: 'closed' | 'in_progress') => {
     if (!id) return;
-    const msg =
-      newStatus === 'closed' ? 'Encerrar este chamado?' : 'Reabrir este chamado?';
-    if (!window.confirm(msg)) return;
+    const ok = await confirmDialog({
+      title: newStatus === 'closed' ? 'Encerrar chamado' : 'Reabrir chamado',
+      message: newStatus === 'closed' ? 'Encerrar este chamado?' : 'Reabrir este chamado?',
+      confirmLabel: newStatus === 'closed' ? 'Encerrar' : 'Reabrir',
+      danger: newStatus === 'closed',
+    });
+    if (!ok) return;
     setChangingStatus(true);
     try {
       await api.updateTicket(id, { status: newStatus });
+      toast.success(newStatus === 'closed' ? 'Chamado encerrado.' : 'Chamado reaberto.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao atualizar o chamado');
+      toast.error(e instanceof Error ? e.message : 'Falha ao atualizar o chamado');
     } finally {
       setChangingStatus(false);
     }
@@ -128,7 +136,7 @@ export function ChamadoDetalhe() {
       const { suggestion } = await api.suggestTicketReply(id);
       setReplyText(suggestion);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao gerar a sugestão');
+      toast.error(e instanceof Error ? e.message : 'Falha ao gerar a sugestão');
     } finally {
       setSuggesting(false);
     }

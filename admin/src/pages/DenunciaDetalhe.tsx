@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, ReportDetail, ReportProfile } from '../lib/api';
 import { REPORT_STATUS_LABEL } from './Denuncias';
 import { TYPE_LABEL, PET_STATUS_LABEL } from './Casos';
+import { toast } from '../lib/ui';
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -100,9 +101,10 @@ export function DenunciaDetalhe() {
     try {
       await api.updateReport(id, { status, admin_notes: notes.trim() || null });
       setSavedOk(true);
+      toast.success('Triagem salva.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao salvar');
+      toast.error(e instanceof Error ? e.message : 'Falha ao salvar');
     } finally {
       setSaving(false);
     }

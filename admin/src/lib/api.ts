@@ -538,9 +538,23 @@ export interface ReportPatch {
   admin_notes?: string | null;
 }
 
+export interface Analytics {
+  signups: { day: string; count: number }[];
+  cases: { day: string; lost: number; sighted: number; rescued: number }[];
+  revenue: { month: string; fee: number; premium: number; total: number }[];
+  casesByType: Record<string, number>;
+  casesByStatus: Record<string, number>;
+  casesBySpecies: Record<string, number>;
+  topFinders: { name: string; rescues: number }[];
+  premiumFunnel: { total: number; premium: number; conversion: number };
+}
+
 export const api = {
   // Verifica sessão + papel de admin. Lança erro 403 se não for admin.
   me: (): Promise<AdminProfile> => authFetch('/admin/me'),
+
+  // Análises (BI) — séries temporais e distribuições.
+  analytics: (): Promise<Analytics> => authFetch('/admin/analytics'),
 
   // Métricas resumidas do dashboard.
   overview: (): Promise<AdminOverview> => authFetch('/admin/overview'),

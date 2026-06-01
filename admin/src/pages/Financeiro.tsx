@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, FinanceSummary, LedgerFilters, LedgerPage, LedgerRow, Withdrawal } from '../lib/api';
+import { confirmDialog, toast } from '../lib/ui';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl = (n: number) => BRL.format(n);
@@ -91,19 +92,25 @@ function WithdrawalsSection({ onSettled }: { onSettled: () => void }) {
   const settle = async (w: Withdrawal, action: 'paid' | 'rejected') => {
     const who = w.user?.full_name ?? 'usuário';
     const valor = brl(Math.abs(w.amount));
-    const msg =
-      action === 'paid'
-        ? `Confirma marcar como PAGO o saque de ${valor} de ${who}?`
-        : `Confirma RECUSAR o saque de ${valor} de ${who}? O valor será devolvido à carteira do usuário.`;
-    if (!window.confirm(msg)) return;
+    const ok = await confirmDialog({
+      title: action === 'paid' ? 'Confirmar pagamento' : 'Recusar saque',
+      message:
+        action === 'paid'
+          ? `Marcar como PAGO o saque de ${valor} de ${who}?`
+          : `Recusar o saque de ${valor} de ${who}? O valor será devolvido à carteira do usuário.`,
+      confirmLabel: action === 'paid' ? 'Marcar pago' : 'Recusar',
+      danger: action === 'rejected',
+    });
+    if (!ok) return;
 
     setBusyId(w.id);
     try {
       await api.settleWithdrawal(w.id, action);
+      toast.success(action === 'paid' ? 'Saque marcado como pago.' : 'Saque recusado e devolvido.');
       load();
       onSettled();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao processar o saque');
+      toast.error(e instanceof Error ? e.message : 'Falha ao processar o saque');
     } finally {
       setBusyId(null);
     }

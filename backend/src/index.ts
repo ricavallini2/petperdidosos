@@ -321,6 +321,144 @@ app.get(
   })
 );
 
+// Análises (BI) — séries temporais e distribuições para a página Análises.
+app.get(
+  '/admin/analytics',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const now = new Date();
+    const DAY = 24 * 60 * 60 * 1000;
+    const signupDays = 30;
+    const caseDays = 14;
+    const months = 6;
+
+    const signupsSince = new Date(now.getTime() - (signupDays - 1) * DAY);
+    signupsSince.setUTCHours(0, 0, 0, 0);
+    const casesSince = new Date(now.getTime() - (caseDays - 1) * DAY);
+    casesSince.setUTCHours(0, 0, 0, 0);
+    const firstMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+
+    const dayKey = (iso: string) => new Date(iso).toISOString().slice(0, 10);
+    const monthKey = (iso: string) => new Date(iso).toISOString().slice(0, 7);
+
+    const [
+      profilesRes,
+      petsWindowRes,
+      petsAllRes,
+      rewardsRes,
+      subsRes,
+      profilesStatsRes,
+    ] = await Promise.all([
+      supabase.from('profiles').select('created_at').gte('created_at', signupsSince.toISOString()),
+      supabase
+        .from('pets')
+        .select('created_at, type')
+        .neq('type', 'donation')
+        .gte('created_at', casesSince.toISOString()),
+      supabase.from('pets').select('type, status, species'),
+      supabase
+        .from('rewards')
+        .select('fee_amount, status, paid_at, refunded_at')
+        .in('status', ['paid', 'refunded'])
+        .gte('paid_at', firstMonth.toISOString()),
+      supabase
+        .from('premium_subscriptions')
+        .select('amount, starts_at, status')
+        .gte('starts_at', firstMonth.toISOString()),
+      supabase.from('profiles').select('full_name, rescues_count, is_premium'),
+    ]);
+
+    // 1. Novos usuários por dia (30d)
+    const signupBuckets = new Map<string, number>();
+    for (let i = 0; i < signupDays; i++) {
+      const d = new Date(signupsSince.getTime() + i * DAY).toISOString().slice(0, 10);
+      signupBuckets.set(d, 0);
+    }
+    (profilesRes.data ?? []).forEach((p) => {
+      const k = dayKey(p.created_at as string);
+      if (signupBuckets.has(k)) signupBuckets.set(k, (signupBuckets.get(k) ?? 0) + 1);
+    });
+    const signups = [...signupBuckets.entries()].map(([day, count]) => ({ day, count }));
+
+    // 2. Novos casos por dia (14d), separados por tipo
+    const caseBuckets = new Map<string, { lost: number; sighted: number; rescued: number }>();
+    for (let i = 0; i < caseDays; i++) {
+      const d = new Date(casesSince.getTime() + i * DAY).toISOString().slice(0, 10);
+      caseBuckets.set(d, { lost: 0, sighted: 0, rescued: 0 });
+    }
+    (petsWindowRes.data ?? []).forEach((p) => {
+      const k = dayKey(p.created_at as string);
+      const b = caseBuckets.get(k);
+      if (!b) return;
+      const t = p.type as string;
+      if (t === 'lost') b.lost++;
+      else if (t === 'sighted') b.sighted++;
+      else if (t === 'rescued') b.rescued++;
+    });
+    const cases = [...caseBuckets.entries()].map(([day, v]) => ({ day, ...v }));
+
+    // 3. Receita por mês (6 meses): taxa de recompensas + assinaturas premium
+    const revBuckets = new Map<string, { fee: number; premium: number }>();
+    for (let i = 0; i < months; i++) {
+      const d = new Date(Date.UTC(firstMonth.getUTCFullYear(), firstMonth.getUTCMonth() + i, 1));
+      revBuckets.set(d.toISOString().slice(0, 7), { fee: 0, premium: 0 });
+    }
+    (rewardsRes.data ?? []).forEach((r) => {
+      const when = (r.paid_at ?? r.refunded_at) as string | null;
+      if (!when) return;
+      const b = revBuckets.get(monthKey(when));
+      if (b) b.fee += Number(r.fee_amount);
+    });
+    (subsRes.data ?? []).forEach((s) => {
+      const b = revBuckets.get(monthKey(s.starts_at as string));
+      if (b) b.premium += Number(s.amount);
+    });
+    const revenue = [...revBuckets.entries()].map(([month, v]) => ({
+      month,
+      fee: round2(v.fee),
+      premium: round2(v.premium),
+      total: round2(v.fee + v.premium),
+    }));
+
+    // 4. Distribuições atuais (casos por tipo / status / espécie)
+    const petsAll = (petsAllRes.data ?? []) as Record<string, unknown>[];
+    const tally = (rows: Record<string, unknown>[], key: string) => {
+      const m: Record<string, number> = {};
+      rows.forEach((r) => {
+        const v = (r[key] as string) ?? 'indefinido';
+        m[v] = (m[v] ?? 0) + 1;
+      });
+      return m;
+    };
+    const nonDonation = petsAll.filter((p) => p.type !== 'donation');
+
+    // 5. Top resgatadores + funil premium
+    const profilesStats = (profilesStatsRes.data ?? []) as Record<string, unknown>[];
+    const topFinders = profilesStats
+      .filter((p) => Number(p.rescues_count) > 0)
+      .sort((a, b) => Number(b.rescues_count) - Number(a.rescues_count))
+      .slice(0, 8)
+      .map((p) => ({ name: (p.full_name as string) ?? 'Sem nome', rescues: Number(p.rescues_count) }));
+    const totalUsers = profilesStats.length;
+    const premiumUsers = profilesStats.filter((p) => p.is_premium === true).length;
+
+    res.json({
+      signups,
+      cases,
+      revenue,
+      casesByType: tally(nonDonation, 'type'),
+      casesByStatus: tally(nonDonation, 'status'),
+      casesBySpecies: tally(petsAll, 'species'),
+      topFinders,
+      premiumFunnel: {
+        total: totalUsers,
+        premium: premiumUsers,
+        conversion: totalUsers ? Number(((premiumUsers / totalUsers) * 100).toFixed(1)) : 0,
+      },
+    });
+  })
+);
+
 // ----------------------------------------------------------------------------
 // Financeiro — resumo, extrato e controle de saques
 // ----------------------------------------------------------------------------

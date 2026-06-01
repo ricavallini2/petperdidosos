@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, UserDetail } from '../lib/api';
+import { confirmDialog, promptDialog, toast } from '../lib/ui';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl = (n: number) => BRL.format(n);
@@ -67,21 +68,32 @@ export function UsuarioDetalhe() {
     const nome = data.profile.full_name ?? 'este usuário';
     let reason: string | undefined;
     if (status === 'active') {
-      if (!window.confirm(`Reativar o acesso de ${nome}?`)) return;
+      const ok = await confirmDialog({
+        title: 'Reativar acesso',
+        message: `Reativar o acesso de ${nome}?`,
+        confirmLabel: 'Reativar',
+      });
+      if (!ok) return;
     } else {
-      const verbo = status === 'blocked' ? 'BLOQUEAR' : 'BANIR';
-      const r = window.prompt(
-        `Motivo para ${verbo} ${nome}.\nO usuário não conseguirá mais acessar o app.`
-      );
+      const verbo = status === 'blocked' ? 'bloquear' : 'banir';
+      const r = await promptDialog({
+        title: `${status === 'blocked' ? 'Bloquear' : 'Banir'} usuário`,
+        message: `${nome} não conseguirá mais acessar o app.`,
+        label: `Motivo para ${verbo}`,
+        placeholder: 'Descreva o motivo…',
+        confirmLabel: status === 'blocked' ? 'Bloquear' : 'Banir',
+        danger: true,
+      });
       if (r === null) return;
       reason = r;
     }
     setBusy(true);
     try {
       await api.setUserStatus(id, status, reason);
+      toast.success(status === 'active' ? 'Acesso reativado.' : 'Usuário atualizado.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao alterar o status');
+      toast.error(e instanceof Error ? e.message : 'Falha ao alterar o status');
     } finally {
       setBusy(false);
     }

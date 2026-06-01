@@ -16,6 +16,7 @@ import { DenunciaDetalhe } from './pages/DenunciaDetalhe';
 import { Doacoes } from './pages/Doacoes';
 import { DoacaoDetalhe } from './pages/DoacaoDetalhe';
 import { Avistamentos } from './pages/Avistamentos';
+import { Analises } from './pages/Analises';
 import { Configuracoes } from './pages/Configuracoes';
 
 export function App() {
@@ -38,6 +39,7 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/analises" element={<Analises />} />
         <Route path="/casos" element={<Casos />} />
         <Route path="/casos/:id" element={<CasoDetalhe />} />
         <Route path="/denuncias" element={<Denuncias />} />

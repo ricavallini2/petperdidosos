@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, SightingRow, SightingsFilters } from '../lib/api';
+import { confirmDialog, toast } from '../lib/ui';
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -53,18 +54,20 @@ export function Avistamentos() {
   };
 
   const remove = async (s: SightingRow) => {
-    if (
-      !window.confirm(
-        `Excluir o avistamento de ${s.finder.full_name ?? 'um buscador'}? Esta ação não pode ser desfeita.`
-      )
-    )
-      return;
+    const ok = await confirmDialog({
+      title: 'Excluir avistamento',
+      message: `Excluir o avistamento de ${s.finder.full_name ?? 'um buscador'}? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      danger: true,
+    });
+    if (!ok) return;
     setBusyId(s.id);
     try {
       await api.deleteSighting(s.id);
+      toast.success('Avistamento excluído.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao excluir');
+      toast.error(e instanceof Error ? e.message : 'Falha ao excluir');
     } finally {
       setBusyId(null);
     }

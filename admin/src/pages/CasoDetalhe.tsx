@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, CasoDetail } from '../lib/api';
 import { TYPE_LABEL, SPECIES_LABEL, PET_STATUS_LABEL } from './Casos';
+import { confirmDialog, toast } from '../lib/ui';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl = (n: number) => BRL.format(n);
@@ -67,13 +68,20 @@ export function CasoDetalhe() {
 
   const changeStatus = async (newStatus: string, action: string) => {
     if (!id || !data) return;
-    if (!window.confirm(`${action} o caso de ${data.pet.name}?`)) return;
+    const ok = await confirmDialog({
+      title: `${action} caso`,
+      message: `${action} o caso de ${data.pet.name}?`,
+      confirmLabel: action,
+      danger: newStatus === 'cancelado',
+    });
+    if (!ok) return;
     setChanging(true);
     try {
       await api.setCasoStatus(id, newStatus);
+      toast.success('Status atualizado.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao alterar o status');
+      toast.error(e instanceof Error ? e.message : 'Falha ao alterar o status');
     } finally {
       setChanging(false);
     }

@@ -6,6 +6,7 @@ import {
   SubscriptionsFilters,
   SubscriptionsSummary,
 } from '../lib/api';
+import { confirmDialog, toast } from '../lib/ui';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const brl = (n: number) => BRL.format(n);
@@ -65,19 +66,20 @@ function GrantPanel({ onGranted }: { onGranted: () => void }) {
 
   const grant = async () => {
     if (!selected) return;
-    if (
-      !window.confirm(
-        `Conceder Premium ${PLAN_LABEL[plan]} para ${selected.full_name ?? 'este usuário'}?`
-      )
-    )
-      return;
+    const ok = await confirmDialog({
+      title: 'Conceder premium',
+      message: `Conceder Premium ${PLAN_LABEL[plan]} para ${selected.full_name ?? 'este usuário'}?`,
+      confirmLabel: 'Conceder',
+    });
+    if (!ok) return;
     setGranting(true);
     try {
       await api.grantPremium(selected.id, plan);
+      toast.success('Premium concedido com sucesso.');
       reset();
       onGranted();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao conceder premium');
+      toast.error(e instanceof Error ? e.message : 'Falha ao conceder premium');
     } finally {
       setGranting(false);
     }
@@ -214,18 +216,21 @@ export function Assinaturas() {
   };
 
   const cancel = async (s: SubscriptionRow) => {
-    if (
-      !window.confirm(
-        `Cancelar a assinatura de ${s.user.full_name ?? 'este usuário'}? O Premium será revogado.`
-      )
-    )
-      return;
+    const ok = await confirmDialog({
+      title: 'Cancelar assinatura',
+      message: `Cancelar a assinatura de ${s.user.full_name ?? 'este usuário'}? O Premium será revogado.`,
+      confirmLabel: 'Cancelar assinatura',
+      cancelLabel: 'Voltar',
+      danger: true,
+    });
+    if (!ok) return;
     setBusyId(s.id);
     try {
       await api.cancelSubscription(s.id);
+      toast.success('Assinatura cancelada.');
       reloadAll();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao cancelar a assinatura');
+      toast.error(e instanceof Error ? e.message : 'Falha ao cancelar a assinatura');
     } finally {
       setBusyId(null);
     }

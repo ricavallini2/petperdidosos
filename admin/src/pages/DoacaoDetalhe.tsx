@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { api, CasoDetail } from '../lib/api';
 import { SPECIES_LABEL } from './Casos';
 import { DONATION_STATUS_LABEL } from './Doacoes';
+import { confirmDialog, toast } from '../lib/ui';
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
@@ -60,13 +61,20 @@ export function DoacaoDetalhe() {
 
   const changeStatus = async (newStatus: string, action: string) => {
     if (!id || !data) return;
-    if (!window.confirm(`${action} a doação de ${data.pet.name}?`)) return;
+    const ok = await confirmDialog({
+      title: `${action} doação`,
+      message: `${action} a doação de ${data.pet.name}?`,
+      confirmLabel: action,
+      danger: newStatus === 'cancelado',
+    });
+    if (!ok) return;
     setChanging(true);
     try {
       await api.setCasoStatus(id, newStatus);
+      toast.success('Status atualizado.');
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Falha ao alterar o status');
+      toast.error(e instanceof Error ? e.message : 'Falha ao alterar o status');
     } finally {
       setChanging(false);
     }
