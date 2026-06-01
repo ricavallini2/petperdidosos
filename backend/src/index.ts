@@ -436,6 +436,60 @@ app.delete(
   })
 );
 
+// Mapa operacional — pontos geográficos de casos e avistamentos
+app.get(
+  '/admin/map',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const [petsRes, sightingsRes] = await Promise.all([
+      supabase
+        .from('pets')
+        .select('id, name, type, status, latitude, longitude, species, main_photo_url')
+        .neq('type', 'donation')
+        .in('status', ['ativo', 'pausado'])
+        .limit(2000),
+      supabase
+        .from('sightings')
+        .select('id, pet_id, latitude, longitude, confirmed_by_tutor, created_at')
+        .order('created_at', { ascending: false })
+        .limit(1000),
+    ]);
+    if (petsRes.error) throw petsRes.error;
+    if (sightingsRes.error) throw sightingsRes.error;
+
+    const valid = (lat: unknown, lng: unknown) =>
+      Number.isFinite(Number(lat)) &&
+      Number.isFinite(Number(lng)) &&
+      !(Number(lat) === 0 && Number(lng) === 0);
+
+    const pets = ((petsRes.data ?? []) as Record<string, unknown>[])
+      .filter((p) => valid(p.latitude, p.longitude))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        status: p.status,
+        species: p.species,
+        photo_url: p.main_photo_url,
+        lat: Number(p.latitude),
+        lng: Number(p.longitude),
+      }));
+
+    const sightings = ((sightingsRes.data ?? []) as Record<string, unknown>[])
+      .filter((s) => valid(s.latitude, s.longitude))
+      .map((s) => ({
+        id: s.id,
+        pet_id: s.pet_id,
+        confirmed: s.confirmed_by_tutor,
+        created_at: s.created_at,
+        lat: Number(s.latitude),
+        lng: Number(s.longitude),
+      }));
+
+    res.json({ pets, sightings });
+  })
+);
+
 // Métricas resumidas para o dashboard do painel
 app.get(
   '/admin/overview',

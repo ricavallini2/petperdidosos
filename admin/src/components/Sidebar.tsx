@@ -12,6 +12,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: '/', label: 'Visão geral', end: true },
       { to: '/analises', label: 'Análises' },
+      { to: '/mapa', label: 'Mapa' },
       { to: '/casos', label: 'Casos' },
       { to: '/doacoes', label: 'Doações' },
       { to: '/avistamentos', label: 'Avistamentos', badge: 'sightingsPending' },

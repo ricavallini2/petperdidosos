@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
@@ -17,6 +18,8 @@ import { Doacoes } from './pages/Doacoes';
 import { DoacaoDetalhe } from './pages/DoacaoDetalhe';
 import { Avistamentos } from './pages/Avistamentos';
 import { Analises } from './pages/Analises';
+// Mapa é carregado sob demanda — Leaflet só entra no bundle ao abrir a página.
+const Mapa = lazy(() => import('./pages/Mapa').then((m) => ({ default: m.Mapa })));
 import { Auditoria } from './pages/Auditoria';
 import { Administradores } from './pages/Administradores';
 import { Comunicados } from './pages/Comunicados';
@@ -43,6 +46,14 @@ export function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/analises" element={<Analises />} />
+        <Route
+          path="/mapa"
+          element={
+            <Suspense fallback={<div className="splash">Carregando mapa…</div>}>
+              <Mapa />
+            </Suspense>
+          }
+        />
         <Route path="/casos" element={<Casos />} />
         <Route path="/casos/:id" element={<CasoDetalhe />} />
         <Route path="/denuncias" element={<Denuncias />} />

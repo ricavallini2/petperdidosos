@@ -748,3 +748,28 @@ td.empty-state, td.muted-text { text-align: center; padding: 24px; }
 .topbar-menu-item:hover { background: var(--bg); }
 .topbar-menu-item.danger { color: var(--accent); }
 .topbar-menu-item.danger:hover { background: var(--accent-bg); }
+
+/* ============================================================
+   Admin v5 — Mapa operacional
+   ============================================================ */
+.map-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.map-chip {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: var(--card); border: 1px solid var(--border); color: var(--muted);
+  transition: opacity 0.14s, border-color 0.14s;
+}
+.map-chip.active { color: var(--text); border-color: var(--chip); }
+.map-chip:not(.active) { opacity: 0.5; }
+.map-chip-dot { width: 11px; height: 11px; border-radius: 50%; }
+.map-wrap {
+  height: 70vh; min-height: 460px; width: 100%;
+  border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  box-shadow: var(--shadow); z-index: 0;
+}
+/* Popups do Leaflet adaptados ao tema */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--card); color: var(--text);
+}
+.leaflet-popup-content { font-family: inherit; font-size: 13px; }
+.leaflet-container { background: var(--bg); font-family: inherit; }

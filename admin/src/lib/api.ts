@@ -583,12 +583,36 @@ export interface AuditFilters {
   offset?: number;
 }
 
+export interface MapData {
+  pets: {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    species: string | null;
+    photo_url: string | null;
+    lat: number;
+    lng: number;
+  }[];
+  sightings: {
+    id: string;
+    pet_id: string | null;
+    confirmed: boolean | null;
+    created_at: string;
+    lat: number;
+    lng: number;
+  }[];
+}
+
 export const api = {
   // Verifica sessão + papel de admin. Lança erro 403 se não for admin.
   me: (): Promise<AdminProfile> => authFetch('/admin/me'),
 
   // Análises (BI) — séries temporais e distribuições.
   analytics: (): Promise<Analytics> => authFetch('/admin/analytics'),
+
+  // Mapa operacional — pontos de casos e avistamentos.
+  map: (): Promise<MapData> => authFetch('/admin/map'),
 
   // Auditoria — log de ações administrativas.
   audit: (filters: AuditFilters = {}): Promise<AuditPage> => {
