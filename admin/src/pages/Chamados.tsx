@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, AdminTicketRow, AdminTicketsFilters } from '../lib/api';
+import { confirmDialog, toast } from '../lib/ui';
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -62,6 +63,41 @@ export function Chamados() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rows = data?.rows ?? [];
+
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => setSel(new Set()), [data]);
+
+  const toggle = (id: string) =>
+    setSel((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const toggleAll = () =>
+    setSel((s) => (s.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
+
+  const applyBulk = async (status: string, label: string) => {
+    const ids = [...sel];
+    if (!ids.length) return;
+    const ok = await confirmDialog({
+      title: 'Ação em massa',
+      message: `${label} ${ids.length} chamado(s) selecionado(s)?`,
+      confirmLabel: label,
+      danger: status === 'closed',
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.bulkTickets(ids, status);
+      toast.success(`${res.count} chamado(s) atualizados.`);
+      setApplied((a) => ({ ...a }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha na ação em massa');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   return (
     <div className="page">
@@ -129,6 +165,13 @@ export function Chamados() {
       <table className="data-table">
         <thead>
           <tr>
+            <th className="check-cell">
+              <input
+                type="checkbox"
+                checked={rows.length > 0 && sel.size === rows.length}
+                onChange={toggleAll}
+              />
+            </th>
             <th>Assunto</th>
             <th>Usuário</th>
             <th>Categoria</th>
@@ -140,13 +183,13 @@ export function Chamados() {
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={6} className="muted-text">
+              <td colSpan={7} className="muted-text">
                 Carregando…
               </td>
             </tr>
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={6} className="empty-state">
+              <td colSpan={7} className="empty-state">
                 Nenhum chamado encontrado.
               </td>
             </tr>
@@ -157,6 +200,9 @@ export function Chamados() {
                 className="row-clickable"
                 onClick={() => navigate(`/chamados/${t.id}`)}
               >
+                <td className="check-cell" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={sel.has(t.id)} onChange={() => toggle(t.id)} />
+                </td>
                 <td>
                   <span className="user-name">{t.subject}</span>
                 </td>
@@ -184,6 +230,25 @@ export function Chamados() {
           )}
         </tbody>
       </table>
+
+      {sel.size > 0 && (
+        <div className="bulk-bar">
+          <span className="bulk-count">{sel.size} selecionado(s)</span>
+          <div className="bulk-spacer" />
+          <button className="btn-mini btn-clear" disabled={bulkBusy} onClick={() => applyBulk('in_progress', 'Marcar em andamento')}>
+            Em andamento
+          </button>
+          <button className="btn-mini btn-ok" disabled={bulkBusy} onClick={() => applyBulk('resolved', 'Resolver')}>
+            Resolver
+          </button>
+          <button className="btn-mini btn-no" disabled={bulkBusy} onClick={() => applyBulk('closed', 'Encerrar')}>
+            Encerrar
+          </button>
+          <button className="btn-mini btn-clear" onClick={() => setSel(new Set())}>
+            Limpar seleção
+          </button>
+        </div>
+      )}
 
       <div className="pagination">
         <span className="muted-text">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ReportRow, ReportsFilters } from '../lib/api';
+import { confirmDialog, toast } from '../lib/ui';
 
 const fmtDateTime = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -48,6 +49,40 @@ export function Denuncias() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rows = data?.rows ?? [];
 
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => setSel(new Set()), [data]);
+
+  const toggle = (id: string) =>
+    setSel((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  const toggleAll = () =>
+    setSel((s) => (s.size === rows.length ? new Set() : new Set(rows.map((r) => r.id))));
+
+  const applyBulk = async (status: string, label: string) => {
+    const ids = [...sel];
+    if (!ids.length) return;
+    const ok = await confirmDialog({
+      title: 'Ação em massa',
+      message: `${label} ${ids.length} denúncia(s) selecionada(s)?`,
+      confirmLabel: label,
+    });
+    if (!ok) return;
+    setBulkBusy(true);
+    try {
+      const res = await api.bulkReports(ids, status);
+      toast.success(`${res.count} denúncia(s) atualizadas.`);
+      setApplied((a) => ({ ...a }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha na ação em massa');
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   return (
     <div className="page">
       <h1>Denúncias</h1>
@@ -93,6 +128,13 @@ export function Denuncias() {
       <table className="data-table">
         <thead>
           <tr>
+            <th className="check-cell">
+              <input
+                type="checkbox"
+                checked={rows.length > 0 && sel.size === rows.length}
+                onChange={toggleAll}
+              />
+            </th>
             <th>Motivo</th>
             <th>Denunciante</th>
             <th>Denunciado</th>
@@ -104,13 +146,13 @@ export function Denuncias() {
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={6} className="muted-text">
+              <td colSpan={7} className="muted-text">
                 Carregando…
               </td>
             </tr>
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={6} className="empty-state">
+              <td colSpan={7} className="empty-state">
                 Nenhuma denúncia encontrada.
               </td>
             </tr>
@@ -121,6 +163,9 @@ export function Denuncias() {
                 className="row-clickable"
                 onClick={() => navigate(`/denuncias/${r.id}`)}
               >
+                <td className="check-cell" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggle(r.id)} />
+                </td>
                 <td>
                   <span className="user-name">{r.reason}</span>
                 </td>
@@ -140,6 +185,25 @@ export function Denuncias() {
           )}
         </tbody>
       </table>
+
+      {sel.size > 0 && (
+        <div className="bulk-bar">
+          <span className="bulk-count">{sel.size} selecionada(s)</span>
+          <div className="bulk-spacer" />
+          <button className="btn-mini btn-clear" disabled={bulkBusy} onClick={() => applyBulk('reviewing', 'Marcar em análise')}>
+            Em análise
+          </button>
+          <button className="btn-mini btn-ok" disabled={bulkBusy} onClick={() => applyBulk('actioned', 'Aplicar ação')}>
+            Ação aplicada
+          </button>
+          <button className="btn-mini btn-no" disabled={bulkBusy} onClick={() => applyBulk('dismissed', 'Indeferir')}>
+            Indeferir
+          </button>
+          <button className="btn-mini btn-clear" onClick={() => setSel(new Set())}>
+            Limpar seleção
+          </button>
+        </div>
+      )}
 
       <div className="pagination">
         <span className="muted-text">

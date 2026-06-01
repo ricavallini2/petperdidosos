@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, AdminUserRow, AdminUsersFilters } from '../lib/api';
+import { exportToCsv } from '../lib/csv';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR');
 
@@ -49,10 +50,32 @@ export function Usuarios() {
 
   return (
     <div className="page">
-      <h1>Usuários</h1>
-      <p className="page-desc">
-        Contas cadastradas — busque, filtre e clique em uma linha para ver os detalhes.
-      </p>
+      <div className="page-head-row">
+        <div>
+          <h1>Usuários</h1>
+          <p className="page-desc">
+            Contas cadastradas — busque, filtre e clique em uma linha para ver os detalhes.
+          </p>
+        </div>
+        <button
+          className="btn-mini btn-clear"
+          disabled={rows.length === 0}
+          onClick={() =>
+            exportToCsv('usuarios', rows, [
+              { header: 'Nome', value: (u) => u.full_name ?? '' },
+              { header: 'E-mail', value: (u) => u.email ?? '' },
+              { header: 'CPF', value: (u) => u.cpf ?? '' },
+              { header: 'Telefone', value: (u) => u.phone ?? '' },
+              { header: 'Status', value: (u) => u.status },
+              { header: 'Plano', value: (u) => (u.is_premium ? 'Premium' : 'Free') },
+              { header: 'Resgates', value: (u) => u.rescues_count },
+              { header: 'Cadastro', value: (u) => new Date(u.created_at).toLocaleDateString('pt-BR') },
+            ])
+          }
+        >
+          Exportar CSV
+        </button>
+      </div>
 
       <div className="filters">
         <label>

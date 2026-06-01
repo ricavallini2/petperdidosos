@@ -31,11 +31,17 @@ const GROUPS: NavGroup[] = [
   },
   {
     title: 'Pessoas',
-    items: [{ to: '/usuarios', label: 'Usuários' }],
+    items: [
+      { to: '/usuarios', label: 'Usuários' },
+      { to: '/comunicados', label: 'Comunicados' },
+    ],
   },
   {
     title: 'Sistema',
-    items: [{ to: '/configuracoes', label: 'Configurações' }],
+    items: [
+      { to: '/auditoria', label: 'Auditoria' },
+      { to: '/configuracoes', label: 'Configurações' },
+    ],
   },
 ];
 

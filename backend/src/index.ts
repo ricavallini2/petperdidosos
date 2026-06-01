@@ -175,6 +175,192 @@ app.get('/admin/me', requireAdmin, (req, res) => {
   res.json((req as Request & { admin?: unknown }).admin);
 });
 
+// Registra uma ação administrativa no log de auditoria. Best-effort: nunca
+// derruba a requisição principal se a gravação do log falhar.
+type AdminInfo = { id?: string; email?: string; full_name?: string };
+async function logAudit(
+  req: Request,
+  action: string,
+  targetType: string | null,
+  targetId: string | null,
+  detail?: Record<string, unknown>
+) {
+  try {
+    const admin = (req as Request & { admin?: AdminInfo }).admin ?? {};
+    await supabase.from('admin_audit_log').insert({
+      admin_id: admin.id ?? null,
+      admin_email: admin.email ?? null,
+      action,
+      target_type: targetType,
+      target_id: targetId,
+      detail: detail ?? null,
+    });
+  } catch (e) {
+    console.error('[audit] falha ao registrar', action, e);
+  }
+}
+
+// Consulta do log de auditoria com filtros
+app.get(
+  '/admin/audit',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    const action = str(req.query.action);
+    const q = str(req.query.q);
+    const from = str(req.query.from);
+    const toRaw = str(req.query.to);
+    const to = toRaw ? (toRaw.length === 10 ? `${toRaw}T23:59:59.999Z` : toRaw) : null;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    let query = supabase
+      .from('admin_audit_log')
+      .select('id, admin_email, action, target_type, target_id, detail, created_at', {
+        count: 'exact',
+      })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (action) query = query.eq('action', action);
+    if (from) query = query.gte('created_at', from);
+    if (to) query = query.lte('created_at', to);
+    if (q) query = query.ilike('admin_email', `%${q}%`);
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+    res.json({ rows: data ?? [], total: count ?? 0 });
+  })
+);
+
+// Lista de ações distintas (para o filtro do log)
+app.get(
+  '/admin/audit/actions',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const { data } = await supabase
+      .from('admin_audit_log')
+      .select('action')
+      .order('action');
+    const actions = [...new Set((data ?? []).map((r) => r.action as string))];
+    res.json({ actions });
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Ações em massa — aplica uma mudança de status a vários itens de uma vez
+// ----------------------------------------------------------------------------
+const asIdList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x).slice(0, 500) : [];
+
+app.post(
+  '/admin/tickets/bulk',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const ids = asIdList(req.body?.ids);
+    const status = req.body?.status;
+    if (!ids.length) return res.status(400).json({ error: 'Nenhum item selecionado' });
+    if (!TICKET_STATUS.includes(status)) return res.status(400).json({ error: 'status inválido' });
+    const { error } = await supabase
+      .from('support_tickets')
+      .update({ status, updated_at: new Date().toISOString() })
+      .in('id', ids);
+    if (error) throw error;
+    await logAudit(req, 'ticket.bulk', 'ticket', null, { status, count: ids.length });
+    res.json({ success: true, count: ids.length });
+  })
+);
+
+app.post(
+  '/admin/reports/bulk',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const ids = asIdList(req.body?.ids);
+    const status = req.body?.status;
+    if (!ids.length) return res.status(400).json({ error: 'Nenhum item selecionado' });
+    if (!REPORT_STATUS.includes(status)) return res.status(400).json({ error: 'status inválido' });
+    const { error } = await supabase.from('reports').update({ status }).in('id', ids);
+    if (error) throw error;
+    await logAudit(req, 'report.bulk', 'report', null, { status, count: ids.length });
+    res.json({ success: true, count: ids.length });
+  })
+);
+
+app.post(
+  '/admin/pets/bulk',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const ids = asIdList(req.body?.ids);
+    const status = req.body?.status;
+    if (!ids.length) return res.status(400).json({ error: 'Nenhum item selecionado' });
+    if (!PET_STATUS.includes(status)) return res.status(400).json({ error: 'status inválido' });
+    const { error } = await supabase
+      .from('pets')
+      .update({ status, updated_at: new Date().toISOString() })
+      .in('id', ids);
+    if (error) throw error;
+    await logAudit(req, 'pet.bulk', 'pet', null, { status, count: ids.length });
+    res.json({ success: true, count: ids.length });
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Broadcast — envia uma notificação para um público de usuários
+// ----------------------------------------------------------------------------
+const BROADCAST_AUDIENCES = ['all', 'premium', 'free'];
+
+// Resolve os ids de usuários do público escolhido
+async function resolveAudience(audience: string): Promise<string[]> {
+  let q = supabase.from('profiles').select('id');
+  if (audience === 'premium') q = q.eq('is_premium', true);
+  else if (audience === 'free') q = q.eq('is_premium', false);
+  const { data } = await q;
+  return (data ?? []).map((p) => p.id as string);
+}
+
+app.get(
+  '/admin/broadcast/preview',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const audience = String(req.query.audience ?? 'all');
+    if (!BROADCAST_AUDIENCES.includes(audience)) {
+      return res.status(400).json({ error: 'Público inválido' });
+    }
+    const ids = await resolveAudience(audience);
+    res.json({ count: ids.length });
+  })
+);
+
+app.post(
+  '/admin/broadcast',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const audience = String(req.body?.audience ?? 'all');
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!BROADCAST_AUDIENCES.includes(audience)) {
+      return res.status(400).json({ error: 'Público inválido' });
+    }
+    if (!title) return res.status(400).json({ error: 'O título é obrigatório' });
+
+    const ids = await resolveAudience(audience);
+    if (!ids.length) return res.json({ success: true, count: 0 });
+
+    // Insere em lotes para não estourar limites de payload
+    const rows = ids.map((user_id) => ({ user_id, title, body: body || null, type: 'broadcast' }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from('notifications').insert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+
+    await logAudit(req, 'broadcast.send', 'notification', null, {
+      audience,
+      count: ids.length,
+      title,
+    });
+    res.json({ success: true, count: ids.length });
+  })
+);
+
 // Métricas resumidas para o dashboard do painel
 app.get(
   '/admin/overview',
@@ -807,6 +993,7 @@ app.post(
       });
     }
 
+    await logAudit(req, `withdraw.${action}`, 'transaction', txId, { amount: value });
     res.json({ success: true });
   })
 );
@@ -1047,6 +1234,7 @@ app.post(
       .eq('id', id);
     if (error) throw error;
 
+    await logAudit(req, `user.${status}`, 'user', id, { reason: reason ?? null });
     res.json({ success: true, status });
   })
 );
@@ -1199,6 +1387,7 @@ app.patch(
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Chamado não encontrado' });
+    await logAudit(req, 'ticket.update', 'ticket', id, update);
     res.json(data);
   })
 );
@@ -1250,6 +1439,7 @@ app.post(
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', id);
 
+    await logAudit(req, 'ticket.reply', 'ticket', id, { length: message.length });
     res.json({ message: msg, status: newStatus });
   })
 );
@@ -1391,6 +1581,7 @@ app.post(
       type: 'premium_cancelled',
     });
 
+    await logAudit(req, 'subscription.cancel', 'subscription', id, { user_id: sub.user_id });
     res.json({ success: true });
   })
 );
@@ -1449,6 +1640,7 @@ app.post(
       type: 'premium_activated',
     });
 
+    await logAudit(req, 'subscription.grant', 'user', userId, { planType });
     res.json({ success: true, subscription: sub });
   })
 );
@@ -1638,6 +1830,7 @@ app.patch(
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Caso não encontrado' });
+    await logAudit(req, 'pet.status', 'pet', id, { status });
     res.json(data);
   })
 );
@@ -1816,6 +2009,7 @@ app.patch(
       .maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Denúncia não encontrada' });
+    await logAudit(req, 'report.update', 'report', id, update);
     res.json(data);
   })
 );
@@ -2001,6 +2195,7 @@ app.delete(
     const { id } = req.params;
     const { error } = await supabase.from('sightings').delete().eq('id', id);
     if (error) throw error;
+    await logAudit(req, 'sighting.delete', 'sighting', id);
     res.json({ success: true });
   })
 );

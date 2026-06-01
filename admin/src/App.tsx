@@ -17,6 +17,8 @@ import { Doacoes } from './pages/Doacoes';
 import { DoacaoDetalhe } from './pages/DoacaoDetalhe';
 import { Avistamentos } from './pages/Avistamentos';
 import { Analises } from './pages/Analises';
+import { Auditoria } from './pages/Auditoria';
+import { Comunicados } from './pages/Comunicados';
 import { Configuracoes } from './pages/Configuracoes';
 
 export function App() {
@@ -53,6 +55,8 @@ export function App() {
         <Route path="/assinaturas" element={<Assinaturas />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/usuarios/:id" element={<UsuarioDetalhe />} />
+        <Route path="/comunicados" element={<Comunicados />} />
+        <Route path="/auditoria" element={<Auditoria />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -549,12 +549,68 @@ export interface Analytics {
   premiumFunnel: { total: number; premium: number; conversion: number };
 }
 
+export interface AuditRow {
+  id: string;
+  admin_email: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AuditPage {
+  rows: AuditRow[];
+  total: number;
+}
+
+export interface AuditFilters {
+  action?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export const api = {
   // Verifica sessão + papel de admin. Lança erro 403 se não for admin.
   me: (): Promise<AdminProfile> => authFetch('/admin/me'),
 
   // Análises (BI) — séries temporais e distribuições.
   analytics: (): Promise<Analytics> => authFetch('/admin/analytics'),
+
+  // Auditoria — log de ações administrativas.
+  audit: (filters: AuditFilters = {}): Promise<AuditPage> => {
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return authFetch('/admin/audit' + (query ? `?${query}` : ''));
+  },
+  auditActions: (): Promise<{ actions: string[] }> => authFetch('/admin/audit/actions'),
+
+  // Ações em massa.
+  bulkTickets: (ids: string[], status: string): Promise<{ count: number }> =>
+    authFetch('/admin/tickets/bulk', { method: 'POST', body: JSON.stringify({ ids, status }) }),
+  bulkReports: (ids: string[], status: string): Promise<{ count: number }> =>
+    authFetch('/admin/reports/bulk', { method: 'POST', body: JSON.stringify({ ids, status }) }),
+  bulkPets: (ids: string[], status: string): Promise<{ count: number }> =>
+    authFetch('/admin/pets/bulk', { method: 'POST', body: JSON.stringify({ ids, status }) }),
+
+  // Broadcast — notificação para um público.
+  broadcastPreview: (audience: string): Promise<{ count: number }> =>
+    authFetch(`/admin/broadcast/preview?audience=${audience}`),
+  broadcast: (
+    audience: string,
+    title: string,
+    body: string
+  ): Promise<{ success: boolean; count: number }> =>
+    authFetch('/admin/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ audience, title, body }),
+    }),
 
   // Métricas resumidas do dashboard.
   overview: (): Promise<AdminOverview> => authFetch('/admin/overview'),

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, CasoRow, CasosFilters } from '../lib/api';
+import { exportToCsv } from '../lib/csv';
 
 const fmtDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
@@ -62,11 +63,32 @@ export function Casos() {
 
   return (
     <div className="page">
-      <h1>Casos</h1>
-      <p className="page-desc">
-        Pets perdidos, vistos e resgatados. Clique em um caso para ver tudo: tutor,
-        fotos, recompensa, chats e avistamentos.
-      </p>
+      <div className="page-head-row">
+        <div>
+          <h1>Casos</h1>
+          <p className="page-desc">
+            Pets perdidos, vistos e resgatados. Clique em um caso para ver tudo: tutor,
+            fotos, recompensa, chats e avistamentos.
+          </p>
+        </div>
+        <button
+          className="btn-mini btn-clear"
+          disabled={rows.length === 0}
+          onClick={() =>
+            exportToCsv('casos', rows, [
+              { header: 'Pet', value: (p) => p.name },
+              { header: 'Tipo', value: (p) => TYPE_LABEL[p.type] ?? p.type },
+              { header: 'Espécie', value: (p) => (p.species ? SPECIES_LABEL[p.species] ?? p.species : '') },
+              { header: 'Raça', value: (p) => p.breed ?? '' },
+              { header: 'Tutor', value: (p) => p.tutor.full_name ?? '' },
+              { header: 'Status', value: (p) => PET_STATUS_LABEL[p.status] ?? p.status },
+              { header: 'Cadastro', value: (p) => new Date(p.created_at).toLocaleDateString('pt-BR') },
+            ])
+          }
+        >
+          Exportar CSV
+        </button>
+      </div>
 
       <div className="filters">
         <label>
