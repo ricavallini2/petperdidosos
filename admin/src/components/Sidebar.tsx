@@ -39,6 +39,7 @@ const GROUPS: NavGroup[] = [
   {
     title: 'Sistema',
     items: [
+      { to: '/administradores', label: 'Administradores' },
       { to: '/auditoria', label: 'Auditoria' },
       { to: '/configuracoes', label: 'Configurações' },
     ],

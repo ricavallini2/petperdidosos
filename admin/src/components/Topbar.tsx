@@ -4,9 +4,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { GlobalSearch } from './GlobalSearch';
 
 export function Topbar() {
-  const { admin } = useAuth();
+  const { admin, signOut } = useAuth();
   const { theme, toggle } = useTheme();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,9 +60,34 @@ export function Topbar() {
           )}
         </button>
 
-        <div className="topbar-admin">
-          <span className="topbar-avatar">{initial}</span>
-          <span className="topbar-admin-name">{name}</span>
+        <div className="topbar-admin-wrap">
+          <button className="topbar-admin" onClick={() => setMenuOpen((o) => !o)}>
+            <span className="topbar-avatar">{initial}</span>
+            <span className="topbar-admin-name">{name}</span>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+              <div className="topbar-menu">
+                <div className="topbar-menu-head">
+                  <div className="topbar-menu-name">{admin?.full_name ?? 'Administrador'}</div>
+                  <div className="topbar-menu-email">{admin?.email ?? ''}</div>
+                </div>
+                <button
+                  className="topbar-menu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    toggle();
+                  }}
+                >
+                  {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+                </button>
+                <button className="topbar-menu-item danger" onClick={signOut}>
+                  Sair
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

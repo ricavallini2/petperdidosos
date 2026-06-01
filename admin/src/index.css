@@ -702,3 +702,49 @@ td.empty-state, td.muted-text { text-align: center; padding: 24px; }
 }
 .notif-preview-title { font-weight: 800; color: var(--text); font-size: 14px; }
 .notif-preview-text { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+
+/* ============================================================
+   Admin v4 — Governança & Ação
+   ============================================================ */
+/* Centro de ação no dashboard */
+.action-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;
+}
+.action-card {
+  display: flex; align-items: center; gap: 14px; text-align: left; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: 14px; padding: 16px; box-shadow: var(--shadow); transition: transform 0.12s, box-shadow 0.12s;
+}
+.action-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.action-count {
+  font-size: 26px; font-weight: 800; color: var(--accent); min-width: 36px; letter-spacing: -1px;
+}
+.action-info { display: flex; flex-direction: column; flex: 1; }
+.action-label { font-weight: 700; color: var(--text); font-size: 14px; }
+.action-detail { font-size: 12px; color: var(--muted); font-weight: 600; }
+.action-arrow { color: var(--muted-2); font-size: 18px; font-weight: 700; }
+
+/* Menu do admin na topbar */
+.topbar-admin-wrap { position: relative; }
+.topbar-admin {
+  display: flex; align-items: center; gap: 9px; cursor: pointer;
+  background: none; border: none; padding: 4px; border-radius: 10px;
+}
+.topbar-admin:hover { background: var(--bg); }
+.menu-backdrop { position: fixed; inset: 0; z-index: 30; }
+.topbar-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 31;
+  width: 220px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden; padding: 6px;
+}
+.topbar-menu-head { padding: 10px 12px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.topbar-menu-name { font-weight: 700; color: var(--text); font-size: 14px; }
+.topbar-menu-email { font-size: 12px; color: var(--muted); }
+.topbar-menu-item {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  padding: 9px 12px; border: none; background: none; color: var(--text);
+  font-size: 13px; font-weight: 600; border-radius: 9px;
+}
+.topbar-menu-item:hover { background: var(--bg); }
+.topbar-menu-item.danger { color: var(--accent); }
+.topbar-menu-item.danger:hover { background: var(--accent-bg); }

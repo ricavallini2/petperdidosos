@@ -48,7 +48,17 @@ export interface AdminOverview {
   openReports: number;
   activeRewardsTotal: number;
   openTickets: number | null;
+  withdrawPendingCount: number;
+  withdrawPendingTotal: number;
   revenueMonth: number;
+}
+
+export interface AdminAccount {
+  id: string;
+  full_name: string | null;
+  photo_url: string | null;
+  email: string | null;
+  created_at: string;
 }
 
 export interface FinanceSummary {
@@ -611,6 +621,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ audience, title, body }),
     }),
+
+  // Administradores — gestão de acesso ao painel.
+  admins: (): Promise<{ rows: AdminAccount[] }> => authFetch('/admin/admins'),
+  addAdmin: (userId: string): Promise<{ success: boolean }> =>
+    authFetch('/admin/admins', { method: 'POST', body: JSON.stringify({ userId }) }),
+  removeAdmin: (id: string): Promise<{ success: boolean }> =>
+    authFetch(`/admin/admins/${id}`, { method: 'DELETE' }),
 
   // Métricas resumidas do dashboard.
   overview: (): Promise<AdminOverview> => authFetch('/admin/overview'),

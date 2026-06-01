@@ -18,6 +18,7 @@ import { DoacaoDetalhe } from './pages/DoacaoDetalhe';
 import { Avistamentos } from './pages/Avistamentos';
 import { Analises } from './pages/Analises';
 import { Auditoria } from './pages/Auditoria';
+import { Administradores } from './pages/Administradores';
 import { Comunicados } from './pages/Comunicados';
 import { Configuracoes } from './pages/Configuracoes';
 
@@ -57,6 +58,7 @@ export function App() {
         <Route path="/usuarios/:id" element={<UsuarioDetalhe />} />
         <Route path="/comunicados" element={<Comunicados />} />
         <Route path="/auditoria" element={<Auditoria />} />
+        <Route path="/administradores" element={<Administradores />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

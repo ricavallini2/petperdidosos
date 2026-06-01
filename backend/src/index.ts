@@ -361,6 +361,81 @@ app.post(
   })
 );
 
+// ----------------------------------------------------------------------------
+// Administradores — gestão de quem tem acesso ao painel (is_admin)
+// ----------------------------------------------------------------------------
+app.get(
+  '/admin/admins',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const { data: admins } = await supabase
+      .from('profiles')
+      .select('id, full_name, photo_url, created_at')
+      .eq('is_admin', true)
+      .order('created_at');
+    const list = (admins ?? []) as Record<string, unknown>[];
+    const { data: authData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const emailMap = new Map((authData?.users ?? []).map((u) => [u.id, u.email ?? null]));
+    res.json({
+      rows: list.map((a) => ({
+        id: a.id,
+        full_name: a.full_name,
+        photo_url: a.photo_url,
+        created_at: a.created_at,
+        email: emailMap.get(a.id as string) ?? null,
+      })),
+    });
+  })
+);
+
+// Promove um usuário a administrador (por userId)
+app.post(
+  '/admin/admins',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const userId = typeof req.body?.userId === 'string' ? req.body.userId : '';
+    if (!userId) return res.status(400).json({ error: 'userId obrigatório' });
+
+    const { data: target } = await supabase
+      .from('profiles')
+      .select('id, is_admin, full_name')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+    if (target.is_admin) return res.status(400).json({ error: 'Este usuário já é administrador' });
+
+    const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('id', userId);
+    if (error) throw error;
+    await logAudit(req, 'admin.grant', 'user', userId, { name: target.full_name });
+    res.json({ success: true });
+  })
+);
+
+// Revoga o acesso de administrador
+app.delete(
+  '/admin/admins/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const me = (req as Request & { admin?: AdminInfo }).admin ?? {};
+    if (id === me.id) {
+      return res.status(400).json({ error: 'Você não pode revogar o seu próprio acesso' });
+    }
+    // Salvaguarda: nunca deixar o sistema sem nenhum admin
+    const { count } = await supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_admin', true);
+    if ((count ?? 0) <= 1) {
+      return res.status(400).json({ error: 'Não é possível revogar o último administrador' });
+    }
+    const { error } = await supabase.from('profiles').update({ is_admin: false }).eq('id', id);
+    if (error) throw error;
+    await logAudit(req, 'admin.revoke', 'user', id);
+    res.json({ success: true });
+  })
+);
+
 // Métricas resumidas para o dashboard do painel
 app.get(
   '/admin/overview',
@@ -381,6 +456,18 @@ app.get(
       .from('support_tickets')
       .select('id', { count: 'exact', head: true })
       .in('status', ['pending', 'in_progress']);
+
+    // Saques pendentes de processamento (valor + contagem)
+    const { data: pendingWithdrawals } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('type', 'withdraw')
+      .eq('status', 'pending');
+    const withdrawPendingCount = pendingWithdrawals?.length ?? 0;
+    const withdrawPendingTotal = (pendingWithdrawals ?? []).reduce(
+      (s, t) => s + Math.abs(Number(t.amount)),
+      0
+    );
 
     // Usuários ativos nas últimas 24h: distintos que enviaram mensagem,
     // registraram avistamento ou cadastraram um pet.
@@ -502,6 +589,8 @@ app.get(
       openReports: openReports ?? 0,
       activeRewardsTotal: Number(activeRewardsTotal.toFixed(2)),
       openTickets: openTickets ?? 0,
+      withdrawPendingCount,
+      withdrawPendingTotal: Number(withdrawPendingTotal.toFixed(2)),
       revenueMonth: Number((feeRevenue + subRevenue).toFixed(2)),
     });
   })
