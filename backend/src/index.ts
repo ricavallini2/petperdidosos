@@ -3480,8 +3480,16 @@ async function notifyUser(
     chat_id: n.chat_id ?? null,
     ticket_id: n.ticket_id ?? null,
   });
+  // Enriquecimento: se a notificação é de um chat, incluímos os participantes
+  // para o toque no push abrir a CONVERSA certa (o chat precisa de tutor+finder).
+  let chatExtra: Record<string, unknown> = {};
+  if (n.chat_id) {
+    const { data: c } = await supabase
+      .from('chats').select('tutor_id, finder_id, status').eq('id', n.chat_id).maybeSingle();
+    if (c) chatExtra = { chat_tutor_id: c.tutor_id, chat_finder_id: c.finder_id, chat_status: c.status };
+  }
   await sendExpoPush(userId, n.title, n.body, {
-    type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id,
+    type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id, ...chatExtra,
   });
 }
 

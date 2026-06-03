@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { registerPushToken } from '../services/api';
 
@@ -67,11 +67,51 @@ export function usePushNotifications() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Toque na notificação → leva à tela de Notificações (que roteia ao destino).
+  // Decide o destino a partir dos dados do push (deep link).
+  const routeFromData = useCallback((data: any) => {
+    if (!data) { router.push('/profile/notifications'); return; }
+    const type = data.type as string | undefined;
+    const petId = data.pet_id as string | undefined;
+    const chatId = data.chat_id as string | undefined;
+    const tutorId = data.chat_tutor_id as string | undefined;
+    const finderId = data.chat_finder_id as string | undefined;
+
+    // Chat (mensagem, avistamento, doação, "é a sua vez"...) → abre a CONVERSA.
+    if (chatId && petId && tutorId && finderId) {
+      router.push(`/chat/${petId}?tutorId=${tutorId}&finderId=${finderId}` as Href);
+      return;
+    }
+    // Resgate concluído → ficha do caso.
+    if (type === 'rescue_confirmed' && petId) {
+      router.push(`/pet/case/${petId}` as Href);
+      return;
+    }
+    // Suporte → chamado específico.
+    if (type === 'support' && data.ticket_id) {
+      router.push(`/profile/ticket/${data.ticket_id}` as Href);
+      return;
+    }
+    if (type === 'withdraw') { router.push('/profile/wallet'); return; }
+    // Fallback: tela de Notificações.
+    router.push('/profile/notifications');
+  }, [router]);
+
+  // Toque na notificação com o app aberto/em segundo plano.
   useEffect(() => {
-    responseSub.current = Notifications.addNotificationResponseReceivedListener(() => {
-      router.push('/profile/notifications');
+    responseSub.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      routeFromData(response.notification.request.content.data);
     });
     return () => responseSub.current?.remove();
-  }, [router]);
+  }, [routeFromData]);
+
+  // App ABERTO pela notificação (estava fechado): trata o toque inicial.
+  useEffect(() => {
+    let cancelled = false;
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (cancelled || !response) return;
+      // Pequeno atraso para o layout/rotas já estarem montados.
+      setTimeout(() => routeFromData(response.notification.request.content.data), 700);
+    });
+    return () => { cancelled = true; };
+  }, [routeFromData]);
 }
