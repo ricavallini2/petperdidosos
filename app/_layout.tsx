@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { FeedbackHost } from '../components/Feedback';
+import { usePushNotifications } from '../hooks/use-push-notifications';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -17,6 +18,9 @@ function RootLayoutNav() {
   const { session, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+
+  // Registra o token de push e trata o toque na notificação (apenas em build).
+  usePushNotifications();
 
   useEffect(() => {
     if (isLoading) return;

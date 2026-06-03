@@ -3062,8 +3062,7 @@ app.post(
       content: '🏡 Doação confirmada! O pet foi adotado. Obrigado por dar um novo lar a ele.',
       system: true,
     });
-    await supabase.from('notifications').insert({
-      user_id: adopterId,
+    await notifyUser(adopterId, {
       title: 'Doação confirmada! 🏡',
       body: `O doador confirmou que você adotou ${pet.name}. Cuide bem dele!`,
       type: 'donation_confirmed', pet_id: chat.pet_id, chat_id: chat.id,
@@ -3071,14 +3070,13 @@ app.post(
 
     // Avisa os demais interessados (fila) que o pet já foi adotado.
     if (others && others.length > 0) {
-      await supabase.from('notifications').insert(
-        others.map((o: any) => ({
-          user_id: o.finder_id,
+      for (const o of others as any[]) {
+        await notifyUser(o.finder_id, {
           title: 'Pet adotado',
           body: `${pet.name} já foi adotado por outra pessoa. Obrigado pelo interesse! 🐾`,
           type: 'donation_closed', pet_id: chat.pet_id, chat_id: o.id,
-        }))
-      );
+        });
+      }
     }
 
     res.json({ success: true });
@@ -3317,6 +3315,41 @@ app.delete(
 );
 
 // ============================================================================
+// PUSH TOKENS — registrar/remover o token de notificação do aparelho.
+// ============================================================================
+app.post(
+  '/user/push-token',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { token, platform } = req.body ?? {};
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'token obrigatório' });
+    }
+    const plat = ['ios', 'android', 'web'].includes(platform) ? platform : null;
+    // Upsert por token: se o aparelho trocou de conta, o token passa pro novo user.
+    const { error } = await supabase
+      .from('push_tokens')
+      .upsert({ user_id: userId, token, platform: plat, updated_at: new Date().toISOString() }, { onConflict: 'token' });
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
+app.delete(
+  '/user/push-token',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { token } = req.body ?? {};
+    if (token) {
+      await supabase.from('push_tokens').delete().eq('token', token).eq('user_id', userId);
+    }
+    res.json({ success: true });
+  })
+);
+
+// ============================================================================
 // CHATS — listar chats do usuário
 // ============================================================================
 app.get(
@@ -3392,6 +3425,66 @@ app.get(
 // Mantém contrato antigo: /pets/:petId/messages?userId1=&userId2=
 // userId1 = quem está consultando; userId2 = a outra parte (tutor ou finder)
 // ============================================================================
+// ============================================================================
+// PUSH — envia notificação nativa (Expo Push) para todos os aparelhos do user.
+// Não bloqueia o fluxo: erros são engolidos (a notificação no app já foi salva).
+// ============================================================================
+async function sendExpoPush(
+  userId: string,
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+) {
+  try {
+    const { data: tokens } = await supabase
+      .from('push_tokens').select('token').eq('user_id', userId);
+    const list = (tokens ?? []).map((t: any) => t.token).filter(Boolean);
+    if (list.length === 0) return;
+
+    const messages = list.map((to: string) => ({
+      to, title, body, sound: 'default',
+      data: data ?? {},
+      channelId: 'default',
+      priority: 'high',
+    }));
+
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(messages),
+    });
+    // Remove tokens inválidos (DeviceNotRegistered) para não acumular lixo.
+    const out: any = await resp.json().catch(() => null);
+    const tickets = out?.data ?? [];
+    const dead: string[] = [];
+    tickets.forEach((t: any, i: number) => {
+      if (t?.status === 'error' && t?.details?.error === 'DeviceNotRegistered') dead.push(list[i]);
+    });
+    if (dead.length) await supabase.from('push_tokens').delete().in('token', dead);
+  } catch (e: any) {
+    console.warn('[push] falha ao enviar:', e?.message);
+  }
+}
+
+// Cria a notificação no app E dispara o push nativo, numa só chamada.
+async function notifyUser(
+  userId: string,
+  n: { title: string; body: string; type?: string; pet_id?: string | null; chat_id?: string | null; ticket_id?: string | null },
+) {
+  await supabase.from('notifications').insert({
+    user_id: userId,
+    title: n.title,
+    body: n.body,
+    type: n.type ?? null,
+    pet_id: n.pet_id ?? null,
+    chat_id: n.chat_id ?? null,
+    ticket_id: n.ticket_id ?? null,
+  });
+  await sendExpoPush(userId, n.title, n.body, {
+    type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id,
+  });
+}
+
 async function getOrCreateChat(petId: string, userA: string, userB: string) {
   const { data: pet } = await supabase.from('pets').select('user_id, status').eq('id', petId).single();
   if (!pet) throw new Error('Pet não encontrado');
@@ -3475,8 +3568,7 @@ app.post(
       .single();
     if (error) throw error;
 
-    await supabase.from('notifications').insert({
-      user_id: receiverId,
+    await notifyUser(receiverId, {
       title: 'Nova mensagem',
       body: content ? String(content).slice(0, 80) : '📷 Foto',
       type: 'message',
@@ -3562,8 +3654,7 @@ app.post(
     }
 
     // 4. Notificação
-    await supabase.from('notifications').insert({
-      user_id: finderId,
+    await notifyUser(finderId, {
       title: 'Resgate confirmado! 🎉',
       body: rewardAmount > 0
         ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.`
@@ -3637,8 +3728,7 @@ app.post(
 
     // Avisa o novo 1º da fila que chegou a vez dele.
     if (advance) {
-      await supabase.from('notifications').insert({
-        user_id: advance.finderId,
+      await notifyUser(advance.finderId, {
         title: 'É a sua vez! 🐾',
         body: `Chegou sua vez de conversar sobre a adoção de ${advance.petName}.`,
         type: 'donation_turn', pet_id: chat.pet_id, chat_id: advance.chatId,
@@ -3722,8 +3812,7 @@ app.post(
       await supabase.rpc('profile_increment_rescues', { p_user_id: finder.id });
     }
 
-    await supabase.from('notifications').insert({
-      user_id: finder.id,
+    await notifyUser(finder.id, {
       title: 'Resgate confirmado! 🎉',
       body: rewardAmount > 0 ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.` : 'Obrigado pelo resgate!',
       type: 'rescue_confirmed',
@@ -4309,8 +4398,7 @@ app.post(
         sender_id: finderId,
         content: `Olá! Acho que ${verb} o seu pet 🐾. Veja meu alerta para conferir se é ele.`,
       });
-      await supabase.from('notifications').insert({
-        user_id: lost.user_id,
+      await notifyUser(lost.user_id, {
         title: 'Possível avistamento do seu pet 🐾',
         body: `Alguém ${src.type === 'rescued' ? 'resgatou' : 'viu'} um pet parecido com ${lost.name}. Veja no chat.`,
         type: 'sighting_match',
@@ -4368,8 +4456,7 @@ app.post(
         sender_id: tutorId,
         content: `Acho que o pet que você ${verb} é o meu 🐾 (${lost.name}). Pode conferir?`,
       });
-      await supabase.from('notifications').insert({
-        user_id: publisherId,
+      await notifyUser(publisherId, {
         title: 'Alguém reconheceu o pet 🐾',
         body: `Um tutor acha que o pet que você ${verb} é o dele.`,
         type: 'sighting_claim',
@@ -4533,8 +4620,7 @@ app.post(
         content: '🏆 Resgate confirmado pelo tutor! O caso foi encerrado.',
         system: true,
       });
-      await supabase.from('notifications').insert({
-        user_id: finderId,
+      await notifyUser(finderId, {
         title: 'Resgate confirmado! 🎉',
         body: rewardAmount > 0
           ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.`
@@ -4552,8 +4638,7 @@ app.post(
       content: '✅ O tutor confirmou que é o pet dele. Avistamento adicionado ao caso.',
       system: true,
     });
-    await supabase.from('notifications').insert({
-      user_id: chat.finder_id,
+    await notifyUser(chat.finder_id, {
       title: 'O tutor confirmou! 🎉',
       body: 'O tutor confirmou que o pet que você reportou é o dele. Obrigado por ajudar!',
       type: 'sighting_confirmed',

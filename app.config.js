@@ -8,9 +8,16 @@
 // variável em eas.json (env) ou como EAS env var/secret.
 
 const appJson = require('./app.json');
+const fs = require('fs');
 
 module.exports = () => {
   const expo = { ...appJson.expo };
+
+  // Push (Android/FCM): só referencia o google-services.json se ele existir —
+  // assim builds antes de configurar o Firebase não quebram.
+  if (fs.existsSync('./google-services.json')) {
+    expo.android = { ...expo.android, googleServicesFile: './google-services.json' };
+  }
 
   // Chaves do Google Maps por plataforma (restrições diferentes no Google Cloud:
   // Android usa pacote + SHA-1; iOS usa apenas o bundle ID). Se as específicas

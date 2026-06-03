@@ -635,6 +635,31 @@ export const requestWithdraw = async (userId: string, amount: number) => {
   return response.json();
 };
 
+// Push: registra/remove o token de notificação do aparelho.
+export const registerPushToken = async (token: string, platform: string): Promise<void> => {
+  try {
+    await authedFetch(`${API_URL}/user/push-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, platform }),
+    });
+  } catch {
+    // silencioso — push é best-effort
+  }
+};
+
+export const removePushToken = async (token: string): Promise<void> => {
+  try {
+    await authedFetch(`${API_URL}/user/push-token`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch {
+    // silencioso
+  }
+};
+
 // Exclusão de conta (LGPD). O backend valida pendências e remove os dados.
 export const deleteAccount = async (): Promise<{ success: boolean }> => {
   const response = await authedFetch(`${API_URL}/user/account`, { method: 'DELETE' });

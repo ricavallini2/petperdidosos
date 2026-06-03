@@ -43,6 +43,11 @@ yarn-error.*
 *.tar.gz
 apk-qr.png
 
+# Firebase: chave privada do service account (acesso admin — NUNCA versionar)
+*firebase-adminsdk*.json
+google-service-account*.json
+serviceAccount*.json
+
 # typescript
 *.tsbuildinfo
 

@@ -1416,10 +1416,10 @@ export default function MapScreen() {
                   key={it.key}
                   activeOpacity={0.7}
                   onPress={() => setTypeFilter((prev) => ({ ...prev, [it.key]: !prev[it.key] }))}
-                  style={[styles.legendItem, on ? { backgroundColor: it.color + '1A' } : styles.legendItemOff]}
+                  style={[styles.legendItem, on ? { borderColor: it.color } : { opacity: 0.55 }]}
                 >
-                  <Ionicons name={it.icon} size={13} color={on ? it.color : '#A4B0BE'} />
-                  <Text style={[styles.legendText, { color: on ? it.color : '#A4B0BE' }]}>{it.label}</Text>
+                  <Ionicons name={it.icon} size={13} color={on ? it.color : '#8A93A0'} />
+                  <Text style={[styles.legendText, { color: on ? it.color : '#8A93A0' }]}>{it.label}</Text>
                   <View style={[styles.legendCount, { backgroundColor: on ? it.color : '#CED6E0' }]}>
                     <Text style={styles.legendCountText}>{typeCounts[it.key]}</Text>
                   </View>
@@ -3318,19 +3318,19 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   // Barra de filtros: linha única com rolagem horizontal (nunca quebra).
-  legendBar: {
-    width: '94%', marginTop: 10, alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 14,
-    paddingVertical: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 4,
-  },
+  // Legenda = chips brancos flutuantes (sem caixa de fundo, harmoniza com o mapa).
+  legendBar: { width: '94%', marginTop: 10, alignSelf: 'center', backgroundColor: 'transparent' },
   // Centraliza os chips quando cabem; rola quando passam da largura.
-  legendScrollContent: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10 },
-  legendItemOff: { backgroundColor: '#F1F2F6' },
+  legendScrollContent: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 4, paddingVertical: 2 },
+  legendItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingLeft: 11, paddingRight: 6, paddingVertical: 6, borderRadius: 20,
+    backgroundColor: '#FFF', borderWidth: 1.5, borderColor: 'transparent',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.14, shadowRadius: 7, elevation: 4,
+  },
   legendDot: { width: 11, height: 11, borderRadius: 5.5 },
   legendText: { fontSize: 11.5, fontWeight: '800', color: '#2F3542' },
-  legendCount: { minWidth: 17, paddingHorizontal: 4, height: 17, borderRadius: 8.5, justifyContent: 'center', alignItems: 'center' },
+  legendCount: { minWidth: 18, paddingHorizontal: 4, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center' },
   legendCountText: { fontSize: 10, fontWeight: '900', color: '#FFF' },
   adoptCard: { backgroundColor: '#EFF6FF', borderRadius: 16, padding: 14, marginTop: 4, marginBottom: 4, borderWidth: 1, borderColor: '#DBEAFE' },
   adoptHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },

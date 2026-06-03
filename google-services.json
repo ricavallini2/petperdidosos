@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "965229781905",
+    "project_id": "petperdidosos-43dc4",
+    "storage_bucket": "petperdidosos-43dc4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965229781905:android:1e8ddad652fa7a65433030",
+        "android_client_info": {
+          "package_name": "com.ricavallini.petperdidosos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByFjZyLp0Iqh4m0DMxO65Ag1sbGGHoo6E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
