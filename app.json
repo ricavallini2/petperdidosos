@@ -15,7 +15,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FF4757",
+        "backgroundColor": "#FB5066",
         "backgroundImage": "./logotipo/adaptive-bg.png",
         "foregroundImage": "./logotipo/adaptive-fg.png"
       },
@@ -35,10 +35,10 @@
           "image": "./logotipo/splash-icon.png",
           "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#FF4757",
+          "backgroundColor": "#FB5066",
           "dark": {
             "image": "./logotipo/splash-icon.png",
-            "backgroundColor": "#FF4757"
+            "backgroundColor": "#FB5066"
           }
         }
       ],
