@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView,
   Platform, ActivityIndicator, ScrollView,
@@ -10,6 +10,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { toast } from '../components/Feedback';
+import {
+  signInWithGoogle, signInWithApple, isAppleAuthAvailable, SocialAuthCancelled,
+} from '../services/socialAuth';
 
 export const KEEP_LOGGED_IN_KEY = 'keepLoggedIn';
 // Marca, no cadastro, que o lembrete de completar o perfil deve aparecer no 1º acesso.
@@ -30,9 +33,48 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [keepConnected, setKeepConnected] = useState(true);
+  const [socialLoading, setSocialLoading] = useState<null | 'google' | 'apple'>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const passwordRef = useRef<TextInput>(null);
+
+  // Mostra o botão da Apple só onde ele realmente funciona (iOS 13+).
+  useEffect(() => {
+    isAppleAuthAvailable().then(setAppleAvailable);
+  }, []);
+
+  // Conclui um login social: respeita "manter conectado" e entra no app.
+  async function finishSocial() {
+    await AsyncStorage.setItem(KEEP_LOGGED_IN_KEY, keepConnected ? 'true' : 'false');
+    router.replace('/(tabs)');
+  }
+
+  async function handleGoogle() {
+    try {
+      setSocialLoading('google');
+      await signInWithGoogle();
+      await finishSocial();
+    } catch (e: any) {
+      if (e instanceof SocialAuthCancelled) return; // usuário fechou a folha
+      toast.error(e?.message || 'Não foi possível entrar com o Google.', 'Erro no login');
+    } finally {
+      setSocialLoading(null);
+    }
+  }
+
+  async function handleApple() {
+    try {
+      setSocialLoading('apple');
+      await signInWithApple();
+      await finishSocial();
+    } catch (e: any) {
+      if (e instanceof SocialAuthCancelled) return;
+      toast.error(e?.message || 'Não foi possível entrar com a Apple.', 'Erro no login');
+    } finally {
+      setSocialLoading(null);
+    }
+  }
 
   const validate = (): string | null => {
     const mail = email.trim();
@@ -255,6 +297,51 @@ export default function LoginScreen() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Login social */}
+          {Platform.OS !== 'web' && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>ou continue com</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.socialBtn}
+                activeOpacity={0.85}
+                onPress={handleGoogle}
+                disabled={loading || socialLoading !== null}
+              >
+                {socialLoading === 'google' ? (
+                  <ActivityIndicator color="#2F3542" />
+                ) : (
+                  <>
+                    <Ionicons name="logo-google" size={19} color="#EA4335" />
+                    <Text style={styles.socialText}>Continuar com Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {appleAvailable && (
+                <TouchableOpacity
+                  style={[styles.socialBtn, styles.appleBtn]}
+                  activeOpacity={0.85}
+                  onPress={handleApple}
+                  disabled={loading || socialLoading !== null}
+                >
+                  {socialLoading === 'apple' ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-apple" size={20} color="#FFF" />
+                      <Text style={[styles.socialText, styles.appleText]}>Continuar com Apple</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+
           {isSignUp && (
             <Text style={styles.terms}>
               Ao criar a conta, você concorda com os Termos de Uso e a Política de Privacidade.
@@ -352,6 +439,19 @@ const styles = StyleSheet.create({
   mainButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 
   terms: { fontSize: 12, color: '#A4B0BE', fontWeight: '500', textAlign: 'center', lineHeight: 17, marginTop: 14 },
+
+  // Login social
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, marginBottom: 6 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#EAEDF0' },
+  dividerText: { fontSize: 12.5, color: '#A4B0BE', fontWeight: '700' },
+  socialBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    height: 54, borderRadius: 16, borderWidth: 1.5, borderColor: '#EAEDF0',
+    backgroundColor: '#FFF', marginTop: 12,
+  },
+  socialText: { fontSize: 15.5, fontWeight: '800', color: '#2F3542' },
+  appleBtn: { backgroundColor: '#000', borderColor: '#000' },
+  appleText: { color: '#FFF' },
 
   marketing: {
     fontSize: 12.5, color: '#A4B0BE', fontWeight: '600', textAlign: 'center',

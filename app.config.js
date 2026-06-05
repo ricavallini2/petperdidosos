@@ -46,5 +46,14 @@ module.exports = () => {
     };
   }
 
+  // Login social com Google (módulo nativo). No Android, o plugin lê o
+  // google-services.json. No iOS é preciso o iosUrlScheme (o "reversed client ID"
+  // do client OAuth iOS); se ainda não houver, adiciona o plugin só p/ Android.
+  const googleIosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME;
+  const googlePlugin = googleIosUrlScheme
+    ? ['@react-native-google-signin/google-signin', { iosUrlScheme: googleIosUrlScheme }]
+    : '@react-native-google-signin/google-signin';
+  expo.plugins = [...(expo.plugins || []), googlePlugin];
+
   return { expo };
 };

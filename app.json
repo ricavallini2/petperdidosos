@@ -10,6 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.ricavallini.petperdidosos"
     },
     "android": {
@@ -32,16 +33,17 @@
         "expo-splash-screen",
         {
           "image": "./logotipo/splash-icon.png",
-          "imageWidth": 200,
+          "imageWidth": 220,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#FF4757",
           "dark": {
             "image": "./logotipo/splash-icon.png",
-            "backgroundColor": "#1A1A1A"
+            "backgroundColor": "#FF4757"
           }
         }
       ],
       "expo-secure-store",
+      "expo-apple-authentication",
       "@react-native-community/datetimepicker",
       [
         "expo-notifications",

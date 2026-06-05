@@ -12,7 +12,20 @@
           "package_name": "com.ricavallini.petperdidosos"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "965229781905-6ma1fknl49gfmfgtglalgvaq6lpvvoga.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ricavallini.petperdidosos",
+            "certificate_hash": "c459300fce7c476ae30b12562935fd0669d780ba"
+          }
+        },
+        {
+          "client_id": "965229781905-pbn2immg6sukmadpf5s1hdnsj4pb2nsv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyByFjZyLp0Iqh4m0DMxO65Ag1sbGGHoo6E"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "965229781905-pbn2immg6sukmadpf5s1hdnsj4pb2nsv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
