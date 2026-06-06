@@ -43,6 +43,9 @@ yarn-error.*
 *.tar.gz
 apk-qr.png
 
+# distribuição interna do app: o manifesto REAL fica só no VPS (o .apk já cai no *.apk acima)
+backend/release/version.json
+
 # Firebase: chave privada do service account (acesso admin — NUNCA versionar)
 *firebase-adminsdk*.json
 google-service-account*.json

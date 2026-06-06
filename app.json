@@ -58,6 +58,7 @@
     },
     "extra": {
       "router": {},
+      "appBuild": 1,
       "eas": {
         "projectId": "299ba12b-eefa-4abf-a4b5-f00d911c4996"
       }

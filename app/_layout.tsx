@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { FeedbackHost } from '../components/Feedback';
+import { AppUpdateGate } from '../components/AppUpdateGate';
 import { usePushNotifications } from '../hooks/use-push-notifications';
 
 export const unstable_settings = {
@@ -45,6 +46,8 @@ function RootLayoutNav() {
       <StatusBar style="auto" />
       {/* Sistema de toasts/confirmações padronizado — fica acima de tudo */}
       <FeedbackHost />
+      {/* Aviso de atualização (distribuição via APK fora da Play Store) */}
+      <AppUpdateGate />
     </ThemeProvider>
   );
 }

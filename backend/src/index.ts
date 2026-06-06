@@ -1,4 +1,6 @@
 import './env.js';
+import path from 'node:path';
+import fs from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -53,6 +55,41 @@ const aiLimiter = rateLimit({
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' },
 });
 app.use(generalLimiter);
+
+// ============================================================================
+// DISTRIBUIÇÃO DO APP (teste interno, fora da Play Store)
+// Serve o APK e o manifesto de versão de um diretório (APP_RELEASE_DIR). Para
+// lançar: suba o novo .apk e edite o version.json nesse diretório no VPS — sem
+// redeploy do backend.
+//   GET /app/version            -> { version, versionName, apkUrl, notes, mandatory }
+//   GET /app/petperdidosos.apk  -> o APK em si
+// Recomenda-se APP_RELEASE_DIR FORA do repositório (ex.: /root/petperdidosos-releases)
+// para os deploys (git reset) nunca apagarem os arquivos.
+// ============================================================================
+const APP_RELEASE_DIR = process.env.APP_RELEASE_DIR
+  ? path.resolve(process.env.APP_RELEASE_DIR)
+  : path.resolve(process.cwd(), 'release');
+
+app.get('/app/version', (_req, res) => {
+  try {
+    const raw = fs.readFileSync(path.join(APP_RELEASE_DIR, 'version.json'), 'utf8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.type('application/json').send(raw);
+  } catch {
+    res.status(204).end(); // sem manifesto -> o app entende "sem atualização"
+  }
+});
+
+app.use(
+  '/app',
+  express.static(APP_RELEASE_DIR, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.apk')) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      }
+    },
+  })
+);
 
 const PORT = Number(process.env.PORT ?? 3005);
 const APP_FEE_RATE = 0.10; // taxa padrão (fallback) — a vigente fica em app_settings

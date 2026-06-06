@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "versionName": "1.0.1",
+  "apkUrl": "https://api.imestredigital.cloud/app/petperdidosos.apk",
+  "mandatory": false,
+  "notes": "• Login com Google e Apple\n• Novo ícone do app\n• Foto do perfil pelo Google\n• Correções de estabilidade"
+}
