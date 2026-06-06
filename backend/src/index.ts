@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import yauzl from 'yauzl';
 import Anthropic from '@anthropic-ai/sdk';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -499,6 +500,61 @@ function readPublishedRelease(): {
   }
 }
 
+// Lê o config do Expo embutido no APK (assets/app.config, JSON puro) para
+// extrair o número de build REAL que o app usa na checagem de atualização
+// (extra.appBuild) e o nome legível da versão (version). É a fonte de verdade —
+// mais confiável que o versionCode nativo, que pode divergir do appBuild.
+function readApkExpoConfig(
+  apkPath: string
+): Promise<{ appBuild: number | null; versionName: string | null }> {
+  return new Promise((resolve) => {
+    yauzl.open(apkPath, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return resolve({ appBuild: null, versionName: null });
+      let done = false;
+      const finish = (r: { appBuild: number | null; versionName: string | null }) => {
+        if (done) return;
+        done = true;
+        try {
+          zip.close();
+        } catch {
+          /* ignore */
+        }
+        resolve(r);
+      };
+      zip.on('error', () => finish({ appBuild: null, versionName: null }));
+      zip.on('end', () => finish({ appBuild: null, versionName: null }));
+      zip.readEntry();
+      zip.on('entry', (entry) => {
+        if (entry.fileName !== 'assets/app.config') return zip.readEntry();
+        zip.openReadStream(entry, (e, stream) => {
+          if (e || !stream) return finish({ appBuild: null, versionName: null });
+          const chunks: Buffer[] = [];
+          stream.on('data', (c) => chunks.push(c as Buffer));
+          stream.on('error', () => finish({ appBuild: null, versionName: null }));
+          stream.on('end', () => {
+            try {
+              const cfg = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+              const appBuild = Number(cfg?.extra?.appBuild);
+              resolve({
+                appBuild: Number.isInteger(appBuild) ? appBuild : null,
+                versionName: typeof cfg?.version === 'string' ? cfg.version : null,
+              });
+              done = true;
+              try {
+                zip.close();
+              } catch {
+                /* ignore */
+              }
+            } catch {
+              finish({ appBuild: null, versionName: null });
+            }
+          });
+        });
+      });
+    });
+  });
+}
+
 // Estado da versão publicada (manifesto + metadados do APK)
 app.get(
   '/admin/app/release',
@@ -525,30 +581,17 @@ app.post(
   asyncHandler(async (req, res) => {
     const body = req.body ?? {};
     const apkUrl = typeof body.apkUrl === 'string' ? body.apkUrl.trim() : '';
-    const version = Number(body.version);
-    const versionName = typeof body.versionName === 'string' ? body.versionName.trim() : '';
     const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
     const mandatory = body.mandatory === true;
+    // version/versionName são opcionais — preferimos detectar do próprio APK
+    const formVersion = Number(body.version);
+    const formVersionName =
+      typeof body.versionName === 'string' ? body.versionName.trim() : '';
 
-    // Validações
     if (!/^https:\/\/expo\.dev\/artifacts\//.test(apkUrl)) {
       return res
         .status(400)
         .json({ error: 'O link do APK deve ser um artefato do EAS (https://expo.dev/artifacts/...)' });
-    }
-    if (!Number.isInteger(version) || version <= 0) {
-      return res.status(400).json({ error: 'A versão deve ser um número inteiro positivo' });
-    }
-    if (!versionName) {
-      return res.status(400).json({ error: 'O nome da versão é obrigatório (ex.: 1.0.2)' });
-    }
-
-    // Bloqueia downgrade
-    const current = readPublishedRelease();
-    if (current && version <= current.version) {
-      return res.status(400).json({
-        error: `A nova versão (${version}) deve ser maior que a publicada (${current.version}).`,
-      });
     }
 
     fs.mkdirSync(APP_RELEASE_DIR, { recursive: true });
@@ -572,12 +615,34 @@ app.post(
         return res.status(400).json({ error: 'O arquivo baixado não é um APK válido.' });
       }
 
+      // 3. Detecta a versão real lendo o app.config embutido no APK
+      const detected = await readApkExpoConfig(tmpPath);
+      const version = detected.appBuild ?? (Number.isInteger(formVersion) ? formVersion : NaN);
+      const autoDetected = detected.appBuild != null;
+      if (!Number.isInteger(version) || version <= 0) {
+        fs.unlinkSync(tmpPath);
+        return res.status(400).json({
+          error:
+            'Não foi possível detectar a versão (extra.appBuild) dentro do APK. Verifique o build.',
+        });
+      }
+      const versionName = formVersionName || detected.versionName || `build ${version}`;
+
+      // 4. Bloqueia downgrade (usa a versão real detectada)
+      const current = readPublishedRelease();
+      if (current && version <= current.version) {
+        fs.unlinkSync(tmpPath);
+        return res.status(400).json({
+          error: `Este APK é o build ${version}, e a versão publicada já é ${current.version}. O build do novo APK precisa ser maior — incremente extra.appBuild no app.json e gere o APK de novo.`,
+        });
+      }
+
       const size = fs.statSync(tmpPath).size;
 
-      // 3. Rename atômico para o APK servido publicamente
+      // 5. Rename atômico para o APK servido publicamente
       fs.renameSync(tmpPath, path.join(APP_RELEASE_DIR, APK_FILE));
 
-      // 4. Reescreve o manifesto de versão
+      // 6. Reescreve o manifesto de versão
       const manifest = { version, versionName, apkUrl: PUBLIC_APK_URL, mandatory, notes };
       fs.writeFileSync(
         path.join(APP_RELEASE_DIR, VERSION_FILE),
@@ -585,8 +650,12 @@ app.post(
         'utf8'
       );
 
-      await logAudit(req, 'app.release', 'app', String(version), { versionName, mandatory });
-      res.json({ success: true, manifest, apkSize: size });
+      await logAudit(req, 'app.release', 'app', String(version), {
+        versionName,
+        mandatory,
+        autoDetected,
+      });
+      res.json({ success: true, manifest, apkSize: size, autoDetected });
     } catch (e) {
       try {
         if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);

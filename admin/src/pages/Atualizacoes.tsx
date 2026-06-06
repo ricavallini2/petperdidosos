@@ -16,7 +16,6 @@ export function Atualizacoes() {
   const [loadErr, setLoadErr] = useState('');
 
   const [apkUrl, setApkUrl] = useState('');
-  const [version, setVersion] = useState('');
   const [versionName, setVersionName] = useState('');
   const [notes, setNotes] = useState('');
   const [mandatory, setMandatory] = useState(false);
@@ -36,46 +35,32 @@ export function Atualizacoes() {
   }, [load]);
 
   const current = state?.manifest;
-  const suggestedVersion = current ? current.version + 1 : 1;
 
   const publish = async () => {
-    const v = Number(version);
     if (!/^https:\/\/expo\.dev\/artifacts\//.test(apkUrl.trim())) {
       toast.error('O link deve ser um artefato do EAS (https://expo.dev/artifacts/…).');
       return;
     }
-    if (!Number.isInteger(v) || v <= 0) {
-      toast.error('Informe uma versão inteira válida.');
-      return;
-    }
-    if (current && v <= current.version) {
-      toast.error(`A versão deve ser maior que a publicada (${current.version}).`);
-      return;
-    }
-    if (!versionName.trim()) {
-      toast.error('Informe o nome da versão (ex.: 1.0.2).');
-      return;
-    }
     const ok = await confirmDialog({
       title: 'Publicar atualização',
-      message: `Publicar a versão ${v} (${versionName.trim()})? O APK será baixado do EAS e ficará disponível para os usuários${mandatory ? ' como atualização OBRIGATÓRIA' : ''}.`,
+      message: `O APK será baixado do EAS, a versão lida automaticamente de dentro dele e disponibilizada para os usuários${mandatory ? ' como atualização OBRIGATÓRIA' : ''}. Continuar?`,
       confirmLabel: 'Publicar',
     });
     if (!ok) return;
 
     setPublishing(true);
     try {
-      await api.publishRelease({
+      const res = await api.publishRelease({
         apkUrl: apkUrl.trim(),
-        version: v,
-        versionName: versionName.trim(),
+        versionName: versionName.trim() || undefined,
         notes: notes.trim(),
         mandatory,
       });
-      toast.success(`Versão ${versionName.trim()} publicada!`);
+      toast.success(
+        `Versão ${res.manifest.versionName} (build ${res.manifest.version}) publicada!`
+      );
       setApkUrl('');
       setNotes('');
-      setVersion('');
       setVersionName('');
       setMandatory(false);
       load();
@@ -175,35 +160,22 @@ export function Atualizacoes() {
             />
           </label>
 
-          <div className="release-row">
-            <label className="field-block" style={{ flex: 1 }}>
-              Versão (build)
-              <input
-                type="number"
-                value={version}
-                placeholder={String(suggestedVersion)}
-                min={1}
-                step={1}
-                onChange={(e) => setVersion(e.target.value)}
-                className="release-input"
-              />
-            </label>
-            <label className="field-block" style={{ flex: 1 }}>
-              Nome da versão
-              <input
-                type="text"
-                value={versionName}
-                placeholder="1.0.2"
-                onChange={(e) => setVersionName(e.target.value)}
-                className="release-input"
-              />
-            </label>
-          </div>
+          <label className="field-block">
+            Nome da versão (opcional)
+            <input
+              type="text"
+              value={versionName}
+              placeholder="lido do APK (ex.: 1.0.2)"
+              onChange={(e) => setVersionName(e.target.value)}
+              className="release-input"
+            />
+          </label>
 
           <div className="notice" style={{ marginBottom: 12 }}>
-            ⚠️ A <strong>Versão (build)</strong> precisa ser igual ao{' '}
-            <code>extra.appBuild</code> embutido no APK na hora do build (app.json). O painel
-            não altera esse valor.
+            ✅ A <strong>versão (build)</strong> é lida automaticamente de dentro do APK
+            (<code>extra.appBuild</code>) — você não precisa digitar. O app só oferece a
+            atualização para quem tem um build <strong>menor</strong> que o do APK
+            publicado.
           </div>
 
           <label className="field-block">

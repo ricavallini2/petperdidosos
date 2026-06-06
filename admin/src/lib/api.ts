@@ -621,8 +621,7 @@ export interface AppReleaseState {
 
 export interface PublishReleaseInput {
   apkUrl: string;
-  version: number;
-  versionName: string;
+  versionName?: string;
   notes: string;
   mandatory: boolean;
 }
@@ -638,8 +637,12 @@ export const api = {
   appRelease: (): Promise<AppReleaseState> => authFetch('/admin/app/release'),
   publishRelease: (
     input: PublishReleaseInput
-  ): Promise<{ success: boolean; manifest: AppReleaseManifest; apkSize: number }> =>
-    authFetch('/admin/app/release', { method: 'POST', body: JSON.stringify(input) }),
+  ): Promise<{
+    success: boolean;
+    manifest: AppReleaseManifest;
+    apkSize: number;
+    autoDetected: boolean;
+  }> => authFetch('/admin/app/release', { method: 'POST', body: JSON.stringify(input) }),
   notifyRelease: (): Promise<{ success: boolean; count: number }> =>
     authFetch('/admin/app/release/notify', { method: 'POST' }),
 
