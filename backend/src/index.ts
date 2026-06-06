@@ -4486,7 +4486,8 @@ app.post(
       return res.status(400).json({ error: 'planType deve ser monthly ou lifetime' });
     }
 
-    const PRICE = 9.90;
+    // Mensal R$ 9,90 · Vitalício R$ 79,90 (pagamento simulado nesta fase)
+    const PRICE = planType === 'lifetime' ? 79.90 : 9.90;
     const expiresAt = planType === 'lifetime'
       ? null
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
