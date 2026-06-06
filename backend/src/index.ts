@@ -623,7 +623,7 @@ app.post(
         fs.unlinkSync(tmpPath);
         return res.status(400).json({
           error:
-            'Não foi possível detectar a versão (extra.appBuild) dentro do APK. Verifique o build.',
+            'Este APK foi gerado sem o extra.appBuild — ele é um build antigo, anterior à configuração de versão. Gere um APK novo (eas build) com o extra.appBuild definido no app.json e use esse link.',
         });
       }
       const versionName = formVersionName || detected.versionName || `build ${version}`;

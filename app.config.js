@@ -13,6 +13,13 @@ const fs = require('fs');
 module.exports = () => {
   const expo = { ...appJson.expo };
 
+  // Número de build AUTOMÁTICO e sempre crescente (epoch em segundos), gerado
+  // no momento do build. É o que o app usa para detectar atualização
+  // (components/AppUpdateGate.tsx) e o que o painel admin lê de dentro do APK.
+  // Assim, cada `eas build` já sai com um build maior que o anterior — sem
+  // precisar incrementar nada à mão.
+  expo.extra = { ...expo.extra, appBuild: Math.floor(Date.now() / 1000) };
+
   // Push (Android/FCM): só referencia o google-services.json se ele existir —
   // assim builds antes de configurar o Firebase não quebram.
   if (fs.existsSync('./google-services.json')) {
