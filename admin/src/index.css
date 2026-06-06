@@ -773,3 +773,26 @@ td.empty-state, td.muted-text { text-align: center; padding: 24px; }
 }
 .leaflet-popup-content { font-family: inherit; font-size: 13px; }
 .leaflet-container { background: var(--bg); font-family: inherit; }
+
+/* ============================================================
+   Atualizações do App
+   ============================================================ */
+.release-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 18px; align-items: start; }
+@media (max-width: 900px) { .release-grid { grid-template-columns: 1fr; } }
+.release-version { display: flex; align-items: baseline; gap: 10px; }
+.release-name { font-size: 28px; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+.release-code {
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px;
+}
+.release-row { display: flex; gap: 12px; }
+.release-input {
+  padding: 11px 13px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg); color: var(--text); font-size: 14px; outline: none; width: 100%;
+}
+.release-input:focus { border-color: var(--accent); background: var(--card); }
+.release-toggle {
+  display: flex; align-items: center; gap: 9px; margin: 4px 0 16px;
+  font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.release-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }

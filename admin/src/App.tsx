@@ -22,6 +22,7 @@ import { Analises } from './pages/Analises';
 const Mapa = lazy(() => import('./pages/Mapa').then((m) => ({ default: m.Mapa })));
 import { Auditoria } from './pages/Auditoria';
 import { Administradores } from './pages/Administradores';
+import { Atualizacoes } from './pages/Atualizacoes';
 import { Comunicados } from './pages/Comunicados';
 import { Configuracoes } from './pages/Configuracoes';
 
@@ -70,6 +71,7 @@ export function App() {
         <Route path="/comunicados" element={<Comunicados />} />
         <Route path="/auditoria" element={<Auditoria />} />
         <Route path="/administradores" element={<Administradores />} />
+        <Route path="/atualizacoes" element={<Atualizacoes />} />
         <Route path="/configuracoes" element={<Configuracoes />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

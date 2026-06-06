@@ -604,12 +604,44 @@ export interface MapData {
   }[];
 }
 
+export interface AppReleaseManifest {
+  version: number;
+  versionName: string;
+  apkUrl: string;
+  notes: string;
+  mandatory: boolean;
+}
+
+export interface AppReleaseState {
+  manifest: AppReleaseManifest | null;
+  apkSize: number | null;
+  apkUpdatedAt: string | null;
+  releaseDir: string;
+}
+
+export interface PublishReleaseInput {
+  apkUrl: string;
+  version: number;
+  versionName: string;
+  notes: string;
+  mandatory: boolean;
+}
+
 export const api = {
   // Verifica sessão + papel de admin. Lança erro 403 se não for admin.
   me: (): Promise<AdminProfile> => authFetch('/admin/me'),
 
   // Análises (BI) — séries temporais e distribuições.
   analytics: (): Promise<Analytics> => authFetch('/admin/analytics'),
+
+  // Atualizações do app — versão publicada e publicação de novo APK.
+  appRelease: (): Promise<AppReleaseState> => authFetch('/admin/app/release'),
+  publishRelease: (
+    input: PublishReleaseInput
+  ): Promise<{ success: boolean; manifest: AppReleaseManifest; apkSize: number }> =>
+    authFetch('/admin/app/release', { method: 'POST', body: JSON.stringify(input) }),
+  notifyRelease: (): Promise<{ success: boolean; count: number }> =>
+    authFetch('/admin/app/release/notify', { method: 'POST' }),
 
   // Mapa operacional — pontos de casos e avistamentos.
   map: (): Promise<MapData> => authFetch('/admin/map'),

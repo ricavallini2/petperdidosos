@@ -1,6 +1,8 @@
 import './env.js';
 import path from 'node:path';
 import fs from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import Anthropic from '@anthropic-ai/sdk';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -470,6 +472,159 @@ app.delete(
     if (error) throw error;
     await logAudit(req, 'admin.revoke', 'user', id);
     res.json({ success: true });
+  })
+);
+
+// ----------------------------------------------------------------------------
+// Atualizações do app — publica um novo APK + version.json sem SSH manual
+// ----------------------------------------------------------------------------
+const APK_FILE = 'petperdidosos.apk';
+const VERSION_FILE = 'version.json';
+const PUBLIC_APK_URL = process.env.PUBLIC_APK_URL
+  ? process.env.PUBLIC_APK_URL
+  : 'https://api.imestredigital.cloud/app/petperdidosos.apk';
+
+function readPublishedRelease(): {
+  version: number;
+  versionName: string;
+  apkUrl: string;
+  notes: string;
+  mandatory: boolean;
+} | null {
+  try {
+    const raw = fs.readFileSync(path.join(APP_RELEASE_DIR, VERSION_FILE), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+// Estado da versão publicada (manifesto + metadados do APK)
+app.get(
+  '/admin/app/release',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    const manifest = readPublishedRelease();
+    let apkSize: number | null = null;
+    let apkUpdatedAt: string | null = null;
+    try {
+      const st = fs.statSync(path.join(APP_RELEASE_DIR, APK_FILE));
+      apkSize = st.size;
+      apkUpdatedAt = st.mtime.toISOString();
+    } catch {
+      /* sem APK ainda */
+    }
+    res.json({ manifest, apkSize, apkUpdatedAt, releaseDir: APP_RELEASE_DIR });
+  })
+);
+
+// Publica uma nova versão: baixa o APK do EAS e reescreve o version.json
+app.post(
+  '/admin/app/release',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const body = req.body ?? {};
+    const apkUrl = typeof body.apkUrl === 'string' ? body.apkUrl.trim() : '';
+    const version = Number(body.version);
+    const versionName = typeof body.versionName === 'string' ? body.versionName.trim() : '';
+    const notes = typeof body.notes === 'string' ? body.notes.trim() : '';
+    const mandatory = body.mandatory === true;
+
+    // Validações
+    if (!/^https:\/\/expo\.dev\/artifacts\//.test(apkUrl)) {
+      return res
+        .status(400)
+        .json({ error: 'O link do APK deve ser um artefato do EAS (https://expo.dev/artifacts/...)' });
+    }
+    if (!Number.isInteger(version) || version <= 0) {
+      return res.status(400).json({ error: 'A versão deve ser um número inteiro positivo' });
+    }
+    if (!versionName) {
+      return res.status(400).json({ error: 'O nome da versão é obrigatório (ex.: 1.0.2)' });
+    }
+
+    // Bloqueia downgrade
+    const current = readPublishedRelease();
+    if (current && version <= current.version) {
+      return res.status(400).json({
+        error: `A nova versão (${version}) deve ser maior que a publicada (${current.version}).`,
+      });
+    }
+
+    fs.mkdirSync(APP_RELEASE_DIR, { recursive: true });
+    const tmpPath = path.join(APP_RELEASE_DIR, `.upload_${Date.now()}.tmp`);
+
+    try {
+      // 1. Download em streaming para arquivo temporário
+      const resp = await fetch(apkUrl);
+      if (!resp.ok || !resp.body) {
+        return res.status(502).json({ error: `Falha ao baixar o APK (HTTP ${resp.status})` });
+      }
+      await pipeline(Readable.fromWeb(resp.body as Parameters<typeof Readable.fromWeb>[0]), fs.createWriteStream(tmpPath));
+
+      // 2. Valida assinatura ZIP/APK (começa com "PK")
+      const fd = fs.openSync(tmpPath, 'r');
+      const head = Buffer.alloc(2);
+      fs.readSync(fd, head, 0, 2, 0);
+      fs.closeSync(fd);
+      if (head[0] !== 0x50 || head[1] !== 0x4b) {
+        fs.unlinkSync(tmpPath);
+        return res.status(400).json({ error: 'O arquivo baixado não é um APK válido.' });
+      }
+
+      const size = fs.statSync(tmpPath).size;
+
+      // 3. Rename atômico para o APK servido publicamente
+      fs.renameSync(tmpPath, path.join(APP_RELEASE_DIR, APK_FILE));
+
+      // 4. Reescreve o manifesto de versão
+      const manifest = { version, versionName, apkUrl: PUBLIC_APK_URL, mandatory, notes };
+      fs.writeFileSync(
+        path.join(APP_RELEASE_DIR, VERSION_FILE),
+        JSON.stringify(manifest, null, 2),
+        'utf8'
+      );
+
+      await logAudit(req, 'app.release', 'app', String(version), { versionName, mandatory });
+      res.json({ success: true, manifest, apkSize: size });
+    } catch (e) {
+      try {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
+      throw e;
+    }
+  })
+);
+
+// Notifica todos os usuários sobre a nova versão (notificação in-app)
+app.post(
+  '/admin/app/release/notify',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const manifest = readPublishedRelease();
+    if (!manifest) return res.status(400).json({ error: 'Nenhuma versão publicada ainda.' });
+
+    const { data: profiles } = await supabase.from('profiles').select('id');
+    const ids = (profiles ?? []).map((p) => p.id as string);
+    if (!ids.length) return res.json({ success: true, count: 0 });
+
+    const rows = ids.map((user_id) => ({
+      user_id,
+      title: 'Nova atualização disponível 🚀',
+      body: `A versão ${manifest.versionName} já está disponível. Abra o app para atualizar.`,
+      type: 'app_update',
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from('notifications').insert(rows.slice(i, i + 500));
+      if (error) throw error;
+    }
+
+    await logAudit(req, 'app.release.notify', 'app', String(manifest.version), {
+      count: ids.length,
+    });
+    res.json({ success: true, count: ids.length });
   })
 );
 
