@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
+import { getUserProfile, updateUserProfile } from './api';
 
 // Client IDs do OAuth (Google Cloud). Definidos no .env / EAS env.
 // - WEB: usado como "audience" do idToken nativo (obrigatório no Android e iOS).
@@ -64,7 +65,28 @@ export async function signInWithGoogle() {
     token: idToken,
   });
   if (error) throw error;
+
+  // Se o perfil ainda não tiver foto, usa a foto do Google. Se já tiver, mantém.
+  // Best-effort: nunca bloqueia/quebra o login.
+  await maybeSetGoogleAvatar(data.user).catch(() => {});
+
   return data;
+}
+
+/**
+ * Copia a foto do Google para o perfil SOMENTE quando ainda não há foto cadastrada.
+ * Se o usuário já tem avatar (do trigger, upload manual, etc.), não sobrescreve.
+ */
+async function maybeSetGoogleAvatar(user: any) {
+  const meta = user?.user_metadata ?? {};
+  const pic: string | undefined = meta.avatar_url || meta.picture;
+  if (!pic || !user?.id) return;
+
+  const profile = await getUserProfile(user.id).catch(() => null);
+  const hasPhoto = !!(profile && profile.photo_url != null && String(profile.photo_url).trim() !== '');
+  if (!hasPhoto) {
+    await updateUserProfile(user.id, { photo_url: pic });
+  }
 }
 
 /**
