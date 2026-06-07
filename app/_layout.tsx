@@ -3,6 +3,16 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-reanimated';
+import * as Sentry from '@sentry/react-native';
+
+// Monitoramento de erros/crash. Sem DSN definido, fica desativado (no-op).
+// Ativo apenas em builds (não em DEV) para não poluir com erros locais.
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enabled: !!process.env.EXPO_PUBLIC_SENTRY_DSN && !__DEV__,
+  tracesSampleRate: 0.1,
+  sendDefaultPii: false,
+});
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
@@ -52,10 +62,13 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <AuthProvider>
       <RootLayoutNav />
     </AuthProvider>
   );
 }
+
+// Sentry.wrap habilita captura de erros de renderização + contexto de navegação.
+export default Sentry.wrap(RootLayout);

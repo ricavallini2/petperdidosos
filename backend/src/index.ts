@@ -1,4 +1,6 @@
+import './instrument.js'; // Sentry — precisa ser o primeiro import
 import './env.js';
+import * as Sentry from '@sentry/node';
 import path from 'node:path';
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -5556,6 +5558,9 @@ app.get(
 // ============================================================================
 // ERROR HANDLER
 // ============================================================================
+// Sentry captura os erros que chegam até aqui (antes de responder ao cliente).
+Sentry.setupExpressErrorHandler(app);
+
 app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[error]', err);
   const status = Number.isInteger(err.status) ? (err.status as number) : 500;
