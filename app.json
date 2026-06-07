@@ -2,7 +2,7 @@
   "expo": {
     "name": "PetPerdidoSOS",
     "slug": "PetPerdidoSOS",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./logotipo/icon.png",
     "scheme": "petperdidosos",
@@ -59,7 +59,7 @@
     },
     "extra": {
       "router": {},
-      "appBuild": 2,
+      "appBuild": 3,
       "eas": {
         "projectId": "299ba12b-eefa-4abf-a4b5-f00d911c4996"
       }
