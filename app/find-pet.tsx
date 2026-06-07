@@ -68,7 +68,6 @@ export default function FindPetScreen() {
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
     if (result.canceled || !result.assets?.length) return;
     const uri = result.assets[0].uri;
-    console.log('[find-pet] foto selecionada:', uri);
     setResults(null);
     setPhotoUri(uri);
   };
@@ -77,6 +76,10 @@ export default function FindPetScreen() {
     if (!photoUri || !user) return;
 
     const check = await useAiSearchApi(user.id);
+    if (check.error) {
+      toast.error('Não foi possível verificar sua busca por IA. Confira a conexão e tente de novo.');
+      return;
+    }
     if (!check.allowed) {
       setShowPaywall(true);
       return;
@@ -183,9 +186,6 @@ export default function FindPetScreen() {
                 source={{ uri: photoUri }}
                 style={styles.photo}
                 contentFit="cover"
-                onLoadStart={() => console.log('[find-pet] onLoadStart')}
-                onLoad={() => console.log('[find-pet] onLoad OK')}
-                onError={(e) => console.log('[find-pet] onError:', JSON.stringify(e))}
               />
               <TouchableOpacity style={styles.retakeBtn} onPress={() => takePhoto(true)}>
                 <Ionicons name="camera-reverse" size={18} color="#FFF" />
@@ -411,8 +411,12 @@ export default function FindPetScreen() {
                   onPress={() => {
                     const petId = selected.id;
                     const tutorId = selected.user?.id;
+                    if (!tutorId) {
+                      toast.error('Não foi possível identificar o tutor deste pet.');
+                      return;
+                    }
                     setSelected(null);
-                    router.push(`/chat/${petId}?tutorId=${tutorId}`);
+                    router.push(`/chat/${petId}?tutorId=${tutorId}&finderId=${user?.id ?? ''}`);
                   }}
                 >
                   <Ionicons name="chatbubbles" size={20} color="#FFF" />

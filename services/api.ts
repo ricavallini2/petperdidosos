@@ -9,11 +9,13 @@ const getBaseUrl = () => {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
-  
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3005';
+  // Sem variável definida: em DEV aponta para o backend local (emulador).
+  // Em build de PRODUÇÃO nunca cai em localhost (app ficaria mudo + cleartext
+  // bloqueado pelo Android) — usa a API de produção como rede de segurança.
+  if (__DEV__) {
+    return Platform.OS === 'android' ? 'http://10.0.2.2:3005' : 'http://localhost:3005';
   }
-  return 'http://localhost:3005';
+  return 'https://api.imestredigital.cloud';
 };
 
 export const API_URL = getBaseUrl();
@@ -109,63 +111,22 @@ export interface CreatePetInput {
 }
 
 export const fetchNearbyPets = async (lat: number, lng: number, radius = 5000): Promise<PetSighting[]> => {
+  const controller = new AbortController();
+  // 8s: a 1ª conexão (DNS+TCP+TLS até a VPS) pode passar de alguns segundos.
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
-    const controller = new AbortController();
-    // 8s: a 1ª conexão (DNS+TCP+TLS até a VPS) pode passar de alguns segundos.
-    // Timeout curto fazia a busca cair no fallback "mock" sem necessidade.
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
     const response = await authedFetch(`${API_URL}/pets/nearby?lat=${lat}&lng=${lng}&radius=${radius}`, {
-      signal: controller.signal
+      signal: controller.signal,
     });
-    
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      throw new Error(`Erro HTTP: ${response.status}`);
-    }
-    const data = await response.json();
-    return data;
+    if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
+    return await response.json();
   } catch (error) {
-    console.error('Erro ao buscar pets próximos (API possivelmente offline). Retornando dados de teste:', error);
-    // Fallback com dados de teste caso o backend não esteja rodando
-    return [
-      {
-        id: 'mock-1',
-        name: 'Rex (Mock)',
-        description: 'Cachorro caramelo muito dócil, visto perto da praça.',
-        photo_url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=400',
-        latitude: lat + 0.002,
-        longitude: lng + 0.002,
-        distance: 300,
-        lost_date: new Date(Date.now() - 86400000).toISOString(),
-        reward: { amount: 150 },
-        user: { name: 'João Silva', id: 'user-1' }
-      },
-      {
-        id: 'mock-2',
-        name: 'Mia (Mock)',
-        description: 'Gata siamesa com coleira rosa, muito assustada.',
-        photo_url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400',
-        latitude: lat - 0.004,
-        longitude: lng + 0.001,
-        distance: 800,
-        lost_date: new Date(Date.now() - 172800000).toISOString(),
-        reward: { amount: 300 },
-        user: { name: 'Maria Souza', id: 'user-2' }
-      },
-      {
-        id: 'mock-3',
-        name: 'Thor (Mock)',
-        description: 'Golden Retriever grande, atende pelo nome de Thor.',
-        photo_url: 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400',
-        latitude: lat + 0.001,
-        longitude: lng - 0.005,
-        distance: 600,
-        lost_date: new Date(Date.now() - 3600000).toISOString(),
-        user: { name: 'Carlos', id: 'user-3' }
-      }
-    ];
+    // NUNCA exibir pets fictícios: propaga o erro para a tela tratar (lista vazia
+    // / estado de erro). Dados falsos em produção enganam o usuário.
+    console.warn('fetchNearbyPets falhou:', error);
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
@@ -838,12 +799,20 @@ export const subscribePremium = async (userId: string, planType: 'monthly' | 'li
 };
 
 export const useAiSearchApi = async (userId: string): Promise<{ allowed: boolean; aiSearchesLeft: number | null; isPremium: boolean; error?: string }> => {
-  const response = await authedFetch(`${API_URL}/user/${userId}/ai-search/use`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  const data = await response.json();
-  return data;
+  try {
+    const response = await authedFetch(`${API_URL}/user/${userId}/ai-search/use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return { allowed: false, aiSearchesLeft: null, isPremium: false, error: err.error || `Erro HTTP: ${response.status}` };
+    }
+    return await response.json();
+  } catch (e: any) {
+    // Falha de rede: NÃO trava a tela nem mostra paywall por engano — sinaliza erro.
+    return { allowed: false, aiSearchesLeft: null, isPremium: false, error: e?.message || 'Falha de conexão' };
+  }
 };
 
 export const updatePremiumSettings = async (

@@ -2780,7 +2780,9 @@ app.get(
 // ============================================================================
 app.get(
   '/pets/:petId/case',
+  requireUser,
   asyncHandler(async (req, res) => {
+    const userId = authedId(req);
     const { petId } = req.params;
 
     // 1. Pet + tutor + fotos
@@ -2818,15 +2820,22 @@ app.get(
       .limit(1)
       .maybeSingle();
 
-    // 4. Mensagens do chat do resgate
+    // 4. Mensagens do chat do resgate — SÓ para os participantes (tutor /
+    // encontrador). Conversa privada nunca é exposta a terceiros.
     let messages: any[] = [];
     if (foundChat) {
-      const { data: msgs } = await supabase
-        .from('messages')
-        .select('id, sender_id, content, photo_url, created_at')
-        .eq('chat_id', foundChat.id)
-        .order('created_at', { ascending: true });
-      messages = msgs ?? [];
+      const isParty =
+        userId === (pet as any).user_id ||
+        userId === (foundChat as any).finder_id ||
+        userId === (foundChat as any).tutor_id;
+      if (isParty) {
+        const { data: msgs } = await supabase
+          .from('messages')
+          .select('id, sender_id, content, photo_url, created_at')
+          .eq('chat_id', foundChat.id)
+          .order('created_at', { ascending: true });
+        messages = msgs ?? [];
+      }
     }
 
     // 5. Datas e tempo
