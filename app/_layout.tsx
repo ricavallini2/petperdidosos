@@ -36,13 +36,14 @@ function RootLayoutNav() {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === '(tabs)';
+    // 'login' é a ÚNICA rota pública. Qualquer outra rota sem sessão (inclui
+    // deep-links de push: /chat, /profile/*, /pet/*, /find-pet...) vai pro login,
+    // evitando telas presas no "carregando" para usuário deslogado.
+    const onLogin = segments[0] === 'login';
 
-    if (!session && inAuthGroup) {
-      // Se tentar acessar uma rota protegida sem sessão, vai para o login
+    if (!session && !onLogin) {
       router.replace('/login');
-    } else if (session && segments[0] === 'login') {
-      // Se estiver logado e tentar ir pro login, manda pras abas
+    } else if (session && onLogin) {
       router.replace('/(tabs)');
     }
   }, [session, isLoading, segments]);

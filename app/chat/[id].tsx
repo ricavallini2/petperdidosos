@@ -26,6 +26,10 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  // Polling: evita buscas concorrentes (uma de cada vez) e conta ciclos para
+  // atualizar o status do chat com menos frequência.
+  const fetchingRef = useRef(false);
+  const pollCountRef = useRef(0);
 
   const [pet, setPet] = useState<any>(null);
   const [chat, setChat] = useState<any>(null);
@@ -150,38 +154,62 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (!user || !otherId || isInvalidChat) return;
-    fetchChat();
-    const interval = setInterval(fetchChat, 3000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    const tick = async () => {
+      if (fetchingRef.current) return; // trava: não dispara se a anterior não voltou
+      fetchingRef.current = true;
+      pollCountRef.current += 1;
+      try {
+        // O status do chat (encerrado/fila) muda raramente: só no 1º ciclo e a cada 4.
+        await fetchChat({ isCancelled: () => cancelled, refreshStatus: pollCountRef.current % 4 === 1 });
+      } finally {
+        fetchingRef.current = false;
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [user, petId, otherId, isInvalidChat]);
 
-  const fetchChat = async () => {
+  const fetchChat = async (opts?: { isCancelled?: () => boolean; refreshStatus?: boolean }) => {
     if (!user || !otherId) return;
+    const isCancelled = opts?.isCancelled ?? (() => false);
+    const refreshStatus = opts?.refreshStatus ?? true; // chamadas diretas (após enviar) sempre atualizam
     try {
       const data = await getMessages(petId as string, user.id, otherId);
-      setMessages(data);
+      if (isCancelled()) return;
+      // Reconcilia: mantém mensagens otimistas (pending) que o servidor ainda não
+      // devolveu, para a mensagem recém-enviada NÃO "piscar" (sumir e voltar).
+      setMessages((prev) => {
+        const stillPending = prev.filter(
+          (m: any) => m.pending && !data.some((s: any) => s.sender_id === m.sender_id && s.content === m.content),
+        );
+        return stillPending.length ? [...data, ...stillPending] : data;
+      });
       // Descobre o chat ATUAL pelo par (pet + o outro participante). Filtrar só
       // por pet_id pegava o chat errado quando o usuário tem mais de uma conversa
-      // sobre o mesmo pet (ex.: doador com vários interessados) — o que deixava
-      // um chat encerrado parecer aberto.
-      try {
-        const chats = await listUserChats(user.id);
-        const current = chats.find((c: any) =>
-          c.pet_id === petId &&
-          ((c.tutor_id === user.id && c.finder_id === otherId) ||
-           (c.finder_id === user.id && c.tutor_id === otherId))
-        );
-        setChat(current ?? null);
-        // Fila de adoção (só para doação): posição/total deste chat.
-        if (current?.id && current.pets?.type === 'donation' && current.status === 'open') {
-          getDonationQueue(current.id)
-            .then((q) => setQueue(q.isDonation ? { position: q.position, total: q.total } : null))
-            .catch(() => {});
-        } else {
-          setQueue(null);
-        }
-      } catch {}
-      setIsLoading(false);
+      // sobre o mesmo pet (ex.: doador com vários interessados).
+      if (refreshStatus) {
+        try {
+          const chats = await listUserChats(user.id);
+          if (isCancelled()) return;
+          const current = chats.find((c: any) =>
+            c.pet_id === petId &&
+            ((c.tutor_id === user.id && c.finder_id === otherId) ||
+             (c.finder_id === user.id && c.tutor_id === otherId))
+          );
+          setChat(current ?? null);
+          // Fila de adoção (só para doação): posição/total deste chat.
+          if (current?.id && current.pets?.type === 'donation' && current.status === 'open') {
+            getDonationQueue(current.id)
+              .then((q) => { if (!isCancelled()) setQueue(q.isDonation ? { position: q.position, total: q.total } : null); })
+              .catch(() => {});
+          } else {
+            setQueue(null);
+          }
+        } catch {}
+      }
+      if (!isCancelled()) setIsLoading(false);
     } catch (error) {
       console.error(error);
     }
@@ -357,7 +385,7 @@ export default function ChatScreen() {
     if (chatClosed) return;
     const text = inputText;
     setInputText('');
-    setMessages((prev) => [...prev, { id: Date.now().toString(), sender_id: user.id, content: text, created_at: new Date().toISOString() }]);
+    setMessages((prev) => [...prev, { id: `temp-${Date.now()}`, pending: true, sender_id: user.id, content: text, created_at: new Date().toISOString() }]);
     try {
       setIsSending(true);
       await sendMessage(petId as string, user.id, otherId, text);
