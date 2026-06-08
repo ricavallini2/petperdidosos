@@ -11,7 +11,8 @@ import { supabase } from '../../services/supabase';
 import { getUserSettings, updateUserSettings, deleteAccount } from '../../services/api';
 import { toast, showConfirm } from '../../components/Feedback';
 
-const PRIVACY_POLICY_URL = 'https://imestredigital.cloud/privacidade';
+const PRIVACY_POLICY_URL = 'https://api.imestredigital.cloud/privacidade';
+const TERMS_URL = 'https://api.imestredigital.cloud/termos';
 
 export default function PrivacyScreen() {
   const router = useRouter();
@@ -231,6 +232,16 @@ export default function PrivacyScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle}>Política de Privacidade</Text>
                 <Text style={styles.rowSub}>Como tratamos seus dados (LGPD)</Text>
+              </View>
+            </View>
+            <Ionicons name="open-outline" size={18} color="#C7CDD4" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionRow} onPress={() => Linking.openURL(TERMS_URL).catch(() => toast.error('Não foi possível abrir o link.'))} activeOpacity={0.7}>
+            <View style={styles.rowLabel}>
+              <Ionicons name="reader-outline" size={20} color="#FF4757" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>Termos de Uso</Text>
+                <Text style={styles.rowSub}>Regras de uso do aplicativo</Text>
               </View>
             </View>
             <Ionicons name="open-outline" size={18} color="#C7CDD4" />

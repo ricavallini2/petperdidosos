@@ -3,6 +3,7 @@ import './env.js';
 import * as Sentry from '@sentry/node';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
@@ -95,6 +96,11 @@ app.use(
     },
   })
 );
+
+// Documentos legais (exigidos pela Play Store/App Store): páginas públicas HTTPS.
+const LEGAL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../legal');
+app.get('/privacidade', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'privacidade.html')));
+app.get('/termos', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'termos.html')));
 
 const PORT = Number(process.env.PORT ?? 3005);
 const APP_FEE_RATE = 0.10; // taxa padrão (fallback) — a vigente fica em app_settings

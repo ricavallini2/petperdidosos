@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView,
-  Platform, ActivityIndicator, ScrollView,
+  Platform, ActivityIndicator, ScrollView, Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -344,7 +344,10 @@ export default function LoginScreen() {
 
           {isSignUp && (
             <Text style={styles.terms}>
-              Ao criar a conta, você concorda com os Termos de Uso e a Política de Privacidade.
+              Ao criar a conta, você concorda com os{' '}
+              <Text style={styles.termsLink} onPress={() => Linking.openURL('https://api.imestredigital.cloud/termos')}>Termos de Uso</Text>
+              {' '}e a{' '}
+              <Text style={styles.termsLink} onPress={() => Linking.openURL('https://api.imestredigital.cloud/privacidade')}>Política de Privacidade</Text>.
             </Text>
           )}
         </View>
@@ -439,6 +442,7 @@ const styles = StyleSheet.create({
   mainButtonText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 
   terms: { fontSize: 12, color: '#A4B0BE', fontWeight: '500', textAlign: 'center', lineHeight: 17, marginTop: 14 },
+  termsLink: { color: '#FF4757', fontWeight: '700' },
 
   // Login social
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20, marginBottom: 6 },
