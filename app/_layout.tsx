@@ -3,6 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-reanimated';
+import '../utils/textScaling'; // limita o aumento de fonte do sistema (não quebra o layout)
 import * as Sentry from '@sentry/react-native';
 
 // Monitoramento de erros/crash. Sem DSN definido, fica desativado (no-op).
