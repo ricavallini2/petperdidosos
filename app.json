@@ -11,7 +11,13 @@
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
-      "bundleIdentifier": "com.ricavallini.petperdidosos"
+      "bundleIdentifier": "com.ricavallini.petperdidosos",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Usamos sua localização para mostrar pets perdidos próximos e marcar o local dos alertas no mapa.",
+        "NSCameraUsageDescription": "A câmera é usada para fotografar pets ao criar alertas e na busca por reconhecimento.",
+        "NSPhotoLibraryUsageDescription": "O acesso às fotos permite escolher imagens do pet para alertas e foto de perfil.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {

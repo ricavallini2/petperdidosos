@@ -44,6 +44,11 @@ export default function LoginScreen() {
     isAppleAuthAvailable().then(setAppleAvailable);
   }, []);
 
+  // Google no iOS exige o client OAuth iOS (URL scheme). Sem ele, esconde o
+  // botão para não falhar ao tocar. No Android basta o web client (já ativo).
+  const googleAvailable =
+    Platform.OS === 'android' || !!process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
   // Conclui um login social: respeita "manter conectado" e entra no app.
   async function finishSocial() {
     await AsyncStorage.setItem(KEEP_LOGGED_IN_KEY, keepConnected ? 'true' : 'false');
@@ -306,21 +311,23 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity
-                style={styles.socialBtn}
-                activeOpacity={0.85}
-                onPress={handleGoogle}
-                disabled={loading || socialLoading !== null}
-              >
-                {socialLoading === 'google' ? (
-                  <ActivityIndicator color="#2F3542" />
-                ) : (
-                  <>
-                    <Ionicons name="logo-google" size={19} color="#EA4335" />
-                    <Text style={styles.socialText}>Continuar com Google</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {googleAvailable && (
+                <TouchableOpacity
+                  style={styles.socialBtn}
+                  activeOpacity={0.85}
+                  onPress={handleGoogle}
+                  disabled={loading || socialLoading !== null}
+                >
+                  {socialLoading === 'google' ? (
+                    <ActivityIndicator color="#2F3542" />
+                  ) : (
+                    <>
+                      <Ionicons name="logo-google" size={19} color="#EA4335" />
+                      <Text style={styles.socialText}>Continuar com Google</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
 
               {appleAvailable && (
                 <TouchableOpacity
