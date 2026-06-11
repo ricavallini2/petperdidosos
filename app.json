@@ -42,6 +42,7 @@
           }
         }
       ],
+      "./plugins/withIosNonModularHeaders",
       "expo-router",
       [
         "expo-splash-screen",
