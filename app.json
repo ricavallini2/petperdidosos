@@ -34,15 +34,6 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "useFrameworks": "static"
-          }
-        }
-      ],
-      "./plugins/withIosNonModularHeaders",
       "expo-router",
       [
         "expo-splash-screen",
