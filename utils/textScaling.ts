@@ -1,36 +1,59 @@
 import React from 'react';
-import { Text, TextInput } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput } from 'react-native';
 
 /**
- * Limita o fator de aumento de fonte do sistema (acessibilidade) para que
- * fontes muito grandes no aparelho NÃO quebrem o layout do app.
+ * Ajustes globais de tipografia, aplicados em <Text> e <TextInput>:
  *
- * Mantém um aumento moderado (até +20%) — o suficiente para ajudar quem precisa
- * de letras maiores, sem estourar telas densas (cards, badges, abas, botões).
+ * 1) Limita o fator de aumento de fonte do sistema (acessibilidade) para que
+ *    fontes muito grandes no aparelho NÃO quebrem o layout (cap de +20%).
  *
- * Aplica um padrão global em <Text> e <TextInput>. Telas que quiserem outro
- * limite podem passar `maxFontSizeMultiplier` explicitamente — este patch
- * respeita o valor próprio quando informado.
+ * 2) iOS: reduz levemente as fontes (fator 0.95). As telas dos iPhones têm
+ *    largura útil menor que a maioria dos Androids, e o mesmo fontSize fica
+ *    visualmente maior — truncando abas e estourando chips. Ajustar aqui evita
+ *    mexer tela a tela; calibrar = trocar IOS_FONT_FACTOR (ex.: 0.93 p/ menor).
+ *    Só escala elementos com fontSize explícito — filhos sem fontSize herdam o
+ *    tamanho (já reduzido) do pai, mantendo a hierarquia correta.
+ *
+ * Telas que precisarem de outro limite de acessibilidade podem passar
+ * `maxFontSizeMultiplier` explicitamente — o patch respeita o valor próprio.
  *
  * Observação: no React 19 o antigo `Text.defaultProps` deixou de funcionar, por
- * isso o padrão é injetado via override do `render` (forma compatível com RN 0.81).
+ * isso o padrão é injetado via override do `render` (compatível com RN 0.81).
  */
 export const MAX_FONT_SCALE = 1.2;
+export const IOS_FONT_FACTOR = 0.95;
 
-function capFontScale(Component: any) {
-  if (!Component || Component.__fontScaleCapped) return;
+function patchText(Component: any) {
+  if (!Component || Component.__textScalingPatched) return;
   const originalRender = Component.render;
   if (typeof originalRender !== 'function') return;
 
   Component.render = function patchedRender(props: any, ref: any) {
     const element = originalRender.call(this, props, ref);
-    if (element && element.props && element.props.maxFontSizeMultiplier == null) {
-      return React.cloneElement(element, { maxFontSizeMultiplier: MAX_FONT_SCALE });
+    if (!element || !element.props) return element;
+
+    const extra: Record<string, unknown> = {};
+    if (element.props.maxFontSizeMultiplier == null) {
+      extra.maxFontSizeMultiplier = MAX_FONT_SCALE;
     }
-    return element;
+
+    if (Platform.OS === 'ios') {
+      const flat = StyleSheet.flatten(element.props.style);
+      if (flat && typeof flat.fontSize === 'number') {
+        const scaled: { fontSize: number; lineHeight?: number } = {
+          fontSize: Math.round(flat.fontSize * IOS_FONT_FACTOR * 10) / 10,
+        };
+        if (typeof flat.lineHeight === 'number') {
+          scaled.lineHeight = Math.round(flat.lineHeight * IOS_FONT_FACTOR * 10) / 10;
+        }
+        extra.style = [element.props.style, scaled];
+      }
+    }
+
+    return Object.keys(extra).length ? React.cloneElement(element, extra) : element;
   };
-  Component.__fontScaleCapped = true;
+  Component.__textScalingPatched = true;
 }
 
-capFontScale(Text);
-capFontScale(TextInput);
+patchText(Text);
+patchText(TextInput);
