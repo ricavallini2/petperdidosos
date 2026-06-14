@@ -15,6 +15,9 @@ import rateLimit from 'express-rate-limit';
 import { supabase } from './supabase.js';
 import { haversineMeters } from './distance.js';
 import { generateImageEmbedding, isEmbeddingEnabled } from './embedding.js';
+import {
+  generatePetVisionTags, isVisionTagsEnabled, attributeAgreement, hybridScore,
+} from './vision.js';
 
 const app = express();
 app.set('trust proxy', 1); // atrás de proxy/LB — necessário para rate limit por IP
@@ -132,17 +135,19 @@ async function getFeeRate(): Promise<number> {
 }
 
 // Config global do reconhecimento por foto (limiar de similaridade + raio de busca).
-async function getMatchConfig(): Promise<{ threshold: number; radiusM: number }> {
+async function getMatchConfig(): Promise<{ threshold: number; radiusM: number; strongThreshold: number }> {
   const { data } = await supabase
     .from('app_settings')
-    .select('match_threshold, match_radius_m')
+    .select('match_threshold, match_radius_m, match_strong_threshold')
     .eq('id', 1)
     .maybeSingle();
   const t = Number(data?.match_threshold);
   const r = Number(data?.match_radius_m);
+  const s = Number(data?.match_strong_threshold);
   return {
     threshold: Number.isFinite(t) && t >= 0 && t <= 1 ? t : 0.80,
     radiusM: Number.isFinite(r) && r >= 100 ? r : 10000,
+    strongThreshold: Number.isFinite(s) && s >= 0 && s <= 1 ? s : 0.86,
   };
 }
 
@@ -3009,6 +3014,18 @@ app.post(
         })
         .catch((e) => console.error(`[embedding] falha no pet ${pet.id}:`, e.message));
     }
+
+    // Vision-tags (manchas/padrões/cor) — independente do embedding, best-effort.
+    if (isVisionTagsEnabled()) {
+      generatePetVisionTags(mainPhoto)
+        .then(async (tags) => {
+          if (tags) {
+            await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+            console.log(`[vision] pet ${pet.id} tagueado`);
+          }
+        })
+        .catch((e) => console.error(`[vision] falha no pet ${pet.id}:`, e.message));
+    }
   })
 );
 
@@ -4322,36 +4339,52 @@ app.post(
   aiLimiter,
   requireUser,
   asyncHandler(async (req, res) => {
-    const { photo_url, latitude, longitude } = req.body ?? {};
+    const userId = authedId(req);
+    const { photo_url, latitude, longitude, seen_at } = req.body ?? {};
 
     if (!photo_url) return res.status(400).json({ error: 'photo_url obrigatório' });
     if (!isEmbeddingEnabled()) {
       return res.status(503).json({ error: 'Reconhecimento por IA não configurado (REPLICATE_API_TOKEN ausente)' });
     }
 
-    // Limiar + raio configurados no painel admin (global).
-    const { threshold, radiusM } = await getMatchConfig();
+    const { threshold, radiusM, strongThreshold } = await getMatchConfig();
+    const hasLoc = Number.isFinite(latitude) && Number.isFinite(longitude);
+    const seenAtMs = seen_at && Number.isFinite(new Date(seen_at).getTime()) ? new Date(seen_at).getTime() : Date.now();
+    const FUTURE_GRACE_MS = 24 * 60 * 60 * 1000; // pet não pode ter sido perdido DEPOIS do avistamento
 
-    // 1. Embedding da foto enviada
-    let embedding: number[];
-    try {
-      embedding = await generateImageEmbedding(photo_url);
-    } catch (e: any) {
-      return res.status(502).json({ error: `Falha ao analisar a foto: ${e.message}` });
+    // 1. Em paralelo (escondem a latência): embedding (CLIP, sinal visual) +
+    //    características/manchas/padrões da foto (vision-tags, best-effort).
+    const [embRes, tagRes] = await Promise.allSettled([
+      generateImageEmbedding(photo_url),
+      generatePetVisionTags(photo_url),
+    ]);
+    if (embRes.status === 'rejected') {
+      return res.status(502).json({ error: `Falha ao analisar a foto: ${embRes.reason?.message ?? 'erro'}` });
     }
+    const embedding: number[] = embRes.value;
+    let searchTags = null;
+    if (tagRes.status === 'fulfilled') searchTags = tagRes.value;
+    else console.warn('[match] vision-tags da busca falharam:', tagRes.reason?.message);
 
-    // 2. Busca vetorial (pgvector) — só pets PERDIDOS ativos acima do limiar
+    // 2. Candidatos — pool maior (60) p/ o filtro de raio não cortar recall
     const { data, error } = await supabase.rpc('match_pets', {
       query_embedding: embedding,
       match_threshold: threshold,
-      match_count: 30,
+      match_count: 60,
     });
     if (error) throw error;
+    const candidates: any[] = data ?? [];
 
-    const hasLoc = Number.isFinite(latitude) && Number.isFinite(longitude);
+    // 2b. vision_tags dos candidatos (a RPC não retorna esse campo)
+    const candIds = candidates.map((p) => p.id);
+    const tagsById = new Map<string, any>();
+    if (candIds.length) {
+      const { data: tagRows } = await supabase.from('pets').select('id, vision_tags').in('id', candIds);
+      (tagRows ?? []).forEach((r: any) => tagsById.set(r.id, r.vision_tags));
+    }
 
     // 3. Perfis dos donos (nome + foto respeitando a privacidade)
-    const ownerIds = Array.from(new Set((data ?? []).map((p: any) => p.user_id)));
+    const ownerIds = Array.from(new Set(candidates.map((p) => p.user_id)));
     const ownerById = new Map<string, any>();
     if (ownerIds.length) {
       const { data: owners } = await supabase
@@ -4361,39 +4394,90 @@ app.post(
       (owners ?? []).forEach((o: any) => { gateProfilePhoto(o); ownerById.set(o.id, o); });
     }
 
-    // 4. Enriquece com distância + % de similaridade e filtra pelo raio do admin
-    const results = (data ?? [])
-      .map((p: any) => {
-        const distance = hasLoc
-          ? haversineMeters(latitude, longitude, p.latitude, p.longitude)
-          : null;
+    // 4. Filtros duros (espécie + temporal) + score híbrido (visual + atributos + geo)
+    const results = candidates
+      .filter((p) => !(searchTags?.species && p.species && searchTags.species !== p.species))
+      .filter((p) => {
+        const ld = p.lost_date ? new Date(p.lost_date).getTime() : null;
+        return ld == null || ld <= seenAtMs + FUTURE_GRACE_MS;
+      })
+      .map((p) => {
+        const distance = hasLoc ? haversineMeters(latitude, longitude, p.latitude, p.longitude) : null;
+        const visualSim = Number(p.similarity); // 0..1
+        const { score: attrScore, reasons, comparable } = attributeAgreement(searchTags, {
+          vision_tags: tagsById.get(p.id), color: p.color, size: p.size,
+        });
+        const score = hybridScore(visualSim, attrScore, comparable > 0, distance, radiusM);
+        const speciesOk = !searchTags?.species || !p.species || searchTags.species === p.species;
+        const strength: 'forte' | 'possivel' =
+          (visualSim >= strongThreshold || (score >= strongThreshold && attrScore >= 0.5 && reasons.length >= 1)) && speciesOk
+            ? 'forte' : 'possivel';
         const owner = ownerById.get(p.user_id);
         return {
-          id: p.id,
-          name: p.name,
-          breed: p.breed,
-          color: p.color,
-          size: p.size,
-          sex: p.sex,
-          age_group: p.age_group,
-          species: p.species ?? null,
-          type: p.type ?? 'lost',
-          description: p.description,
-          extra_info: p.extra_info,
-          photo_url: p.main_photo_url,
-          latitude: p.latitude,
-          longitude: p.longitude,
-          lost_date: p.lost_date,
-          status: p.status,
+          id: p.id, name: p.name, breed: p.breed, color: p.color, size: p.size, sex: p.sex, age_group: p.age_group,
+          species: p.species ?? null, type: p.type ?? 'lost', description: p.description, extra_info: p.extra_info,
+          photo_url: p.main_photo_url, latitude: p.latitude, longitude: p.longitude, lost_date: p.lost_date, status: p.status,
           user: { id: p.user_id, name: owner?.full_name ?? 'Tutor', photo_url: owner?.photo_url ?? null },
-          similarity: Math.round(Number(p.similarity) * 100), // 0-100
-          distance, // metros ou null
+          similarity: Math.round(visualSim * 100), // 0-100 (sinal visual puro)
+          match_score: Math.round(score * 100),    // 0-100 (sinal combinado — usado p/ ordenar)
+          strength,
+          reasons,
+          distance,
         };
       })
-      .filter((r: any) => !hasLoc || (r.distance != null && r.distance <= radiusM))
-      .sort((a: any, b: any) => b.similarity - a.similarity);
+      .filter((r) => !hasLoc || (r.distance != null && r.distance <= radiusM))
+      .sort((a, b) => b.match_score - a.match_score);
 
+    // 5. Instrumentação (best-effort) — registra a busca p/ avaliar/calibrar depois
+    let searchId: string | null = null;
+    try {
+      const { data: srow } = await supabase
+        .from('match_searches')
+        .insert({
+          searcher_id: userId,
+          photo_url,
+          latitude: hasLoc ? latitude : null,
+          longitude: hasLoc ? longitude : null,
+          species: searchTags?.species ?? null,
+          search_tags: searchTags,
+          seen_at: new Date(seenAtMs).toISOString(),
+          candidate_count: candidates.length,
+          results: results.slice(0, 10).map((r) => ({
+            pet_id: r.id, similarity: r.similarity, match_score: r.match_score, strength: r.strength,
+          })),
+        })
+        .select('id')
+        .single();
+      searchId = srow?.id ?? null;
+    } catch (e: any) {
+      console.warn('[match] log da busca falhou:', e.message);
+    }
+
+    // Retrocompatível: o corpo continua sendo o array de resultados (como antes,
+    // para não quebrar apps antigos no deploy); o id da busca vai no header.
+    res.setHeader('X-Match-Search-Id', searchId ?? '');
     res.json(results);
+  })
+);
+
+// Feedback do match: registra o desfecho da busca (instrumentação p/ avaliação).
+app.post(
+  '/pets/match/feedback',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { search_id, outcome, chosen_pet_id } = req.body ?? {};
+    if (!search_id) return res.status(400).json({ error: 'search_id obrigatório' });
+    if (outcome && !['contacted', 'none_matched'].includes(outcome)) {
+      return res.status(400).json({ error: 'outcome inválido' });
+    }
+    const { error } = await supabase
+      .from('match_searches')
+      .update({ outcome: outcome ?? null, chosen_pet_id: chosen_pet_id ?? null })
+      .eq('id', search_id)
+      .eq('searcher_id', userId);
+    if (error) throw error;
+    res.json({ success: true });
   })
 );
 
@@ -4427,6 +4511,39 @@ app.post(
         }
       }
       console.log('[backfill] concluído');
+    })();
+  })
+);
+
+// Backfill: gera as vision-tags (características) dos pets que ainda não têm.
+app.post(
+  '/admin/backfill-vision-tags',
+  aiLimiter,
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    if (!isVisionTagsEnabled()) {
+      return res.status(503).json({ error: 'ANTHROPIC_API_KEY ausente' });
+    }
+    const { data: pets, error } = await supabase
+      .from('pets')
+      .select('id, main_photo_url')
+      .is('vision_tags', null)
+      .eq('status', 'ativo');
+    if (error) throw error;
+
+    res.json({ message: `Backfill de características iniciado para ${pets?.length ?? 0} pets`, count: pets?.length ?? 0 });
+
+    (async () => {
+      for (const pet of pets ?? []) {
+        try {
+          const tags = await generatePetVisionTags(pet.main_photo_url);
+          if (tags) await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+          console.log(`[backfill-vision] pet ${pet.id} OK`);
+        } catch (e: any) {
+          console.error(`[backfill-vision] pet ${pet.id} falhou:`, e.message);
+        }
+      }
+      console.log('[backfill-vision] concluído');
     })();
   })
 );

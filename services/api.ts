@@ -271,7 +271,10 @@ export interface PetMatch {
   type?: PetType;
   species?: PetSpecies | null;
   user?: { id: string; name?: string; photo_url?: string | null };
-  similarity: number; // 0-100
+  similarity: number; // 0-100 (sinal visual puro)
+  match_score?: number; // 0-100 (visual + atributos + geo) — usado para ordenar
+  strength?: 'forte' | 'possivel';
+  reasons?: string[]; // ex.: ["mesma cor (preto)", "marca em comum: peito branco"]
   distance: number | null; // metros
 }
 
@@ -279,7 +282,7 @@ export const matchPetByPhoto = async (
   photo_url: string,
   latitude?: number,
   longitude?: number
-): Promise<PetMatch[]> => {
+): Promise<{ searchId: string | null; results: PetMatch[] }> => {
   const response = await authedFetch(`${API_URL}/pets/match`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -289,7 +292,29 @@ export const matchPetByPhoto = async (
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error || `Erro HTTP: ${response.status}`);
   }
-  return response.json();
+  // O corpo é o array de resultados (compatível com o backend antigo). O id da
+  // busca (para o feedback) vem no header X-Match-Search-Id quando o backend é o novo.
+  const searchId = response.headers.get('X-Match-Search-Id') || null;
+  const data = await response.json();
+  const results: PetMatch[] = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+  return { searchId, results };
+};
+
+// Registra o desfecho de uma busca por IA (instrumentação). Best-effort.
+export const submitMatchFeedback = async (
+  searchId: string,
+  outcome: 'contacted' | 'none_matched',
+  chosenPetId?: string,
+): Promise<void> => {
+  try {
+    await authedFetch(`${API_URL}/pets/match/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ search_id: searchId, outcome, chosen_pet_id: chosenPetId }),
+    });
+  } catch {
+    // silencioso — não atrapalha o usuário
+  }
 };
 
 // Inicia contato com o dono a partir de um match: cria chat vinculado ao alerta

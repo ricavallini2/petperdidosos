@@ -19,7 +19,7 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from '../components/Feedback';
 import { supabase } from '../services/supabase';
-import { matchPetByPhoto, PetMatch, useAiSearchApi } from '../services/api';
+import { matchPetByPhoto, submitMatchFeedback, PetMatch, useAiSearchApi } from '../services/api';
 import { formatDistance } from '../utils/formatDistance';
 
 type SortMode = 'similarity' | 'distance';
@@ -44,6 +44,8 @@ export default function FindPetScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<PetMatch[] | null>(null);
+  const [searchId, setSearchId] = useState<string | null>(null);
+  const [feedbackSent, setFeedbackSent] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('similarity');
   const [selected, setSelected] = useState<PetMatch | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -88,6 +90,8 @@ export default function FindPetScreen() {
 
     setAnalyzing(true);
     setResults(null);
+    setSearchId(null);
+    setFeedbackSent(false);
     try {
       // 1. Upload da foto
       const ext = photoUri.substring(photoUri.lastIndexOf('.') + 1) || 'jpg';
@@ -114,7 +118,8 @@ export default function FindPetScreen() {
       setSearchCoords(lat != null && lng != null ? { lat, lng } : null);
 
       // 3. Match por IA
-      const matches = await matchPetByPhoto(publicUrl, lat, lng);
+      const { searchId: sid, results: matches } = await matchPetByPhoto(publicUrl, lat, lng);
+      setSearchId(sid);
       setResults(matches);
     } catch (e: any) {
       toast.error(e?.message ?? 'Tente novamente.', 'Erro na análise');
@@ -139,7 +144,7 @@ export default function FindPetScreen() {
     if (!results) return [];
     const copy = [...results];
     if (sortMode === 'similarity') {
-      copy.sort((a, b) => b.similarity - a.similarity);
+      copy.sort((a, b) => (b.match_score ?? b.similarity) - (a.match_score ?? a.similarity));
     } else {
       copy.sort((a, b) => {
         if (a.distance == null) return 1;
@@ -279,6 +284,16 @@ export default function FindPetScreen() {
               <Text style={styles.resultSub} numberOfLines={1}>
                 {[item.breed, item.color, sizeLabel(item.size), sexLabel(item.sex), ageLabel(item.age_group)].filter(Boolean).join(' · ') || 'Sem detalhes'}
               </Text>
+              {!!item.reasons?.length && (
+                <View style={styles.reasonRow}>
+                  {item.reasons.slice(0, 3).map((r, i) => (
+                    <View key={i} style={styles.reasonChip}>
+                      <Ionicons name="checkmark-circle" size={11} color="#20BF6B" />
+                      <Text style={styles.reasonText} numberOfLines={1}>{r}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               <View style={styles.resultMeta}>
                 {distanceLabel(item.distance) && (
                   <View style={styles.metaChip}>
@@ -299,6 +314,21 @@ export default function FindPetScreen() {
             </View>
           </TouchableOpacity>
         ))}
+
+        {results && results.length > 0 && searchId && !feedbackSent && (
+          <TouchableOpacity
+            style={styles.noneMatchBtn}
+            activeOpacity={0.8}
+            onPress={async () => {
+              setFeedbackSent(true);
+              await submitMatchFeedback(searchId, 'none_matched');
+              toast.success('Seu retorno ajuda a melhorar a busca por IA.', 'Obrigado!');
+            }}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#747D8C" />
+            <Text style={styles.noneMatchText}>Nenhum é o meu pet</Text>
+          </TouchableOpacity>
+        )}
 
         {results && results.length === 0 && (
           <View style={styles.emptyBox}>
@@ -504,6 +534,11 @@ const styles = StyleSheet.create({
   resultImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#DFE4EA' },
   resultName: { fontSize: 16, fontWeight: '800', color: '#2F3542' },
   resultSub: { fontSize: 13, color: '#747D8C', marginTop: 2 },
+  reasonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 5 },
+  reasonChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#E9F9EF', borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2, maxWidth: 160 },
+  reasonText: { fontSize: 10.5, color: '#1E7E47', fontWeight: '700' },
+  noneMatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, alignSelf: 'center', marginTop: 4, marginBottom: 8, paddingVertical: 10, paddingHorizontal: 16 },
+  noneMatchText: { color: '#747D8C', fontSize: 13.5, fontWeight: '700' },
   resultMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   metaChipText: { fontSize: 12, color: '#747D8C', fontWeight: '600' },

@@ -8,7 +8,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { matchPetByPhoto, contactOwner, PetMatch } from '../services/api';
+import { matchPetByPhoto, contactOwner, submitMatchFeedback, PetMatch } from '../services/api';
 import { toast } from '../components/Feedback';
 import { formatDistance } from '../utils/formatDistance';
 
@@ -23,6 +23,7 @@ export default function MatchOwnersScreen() {
 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<PetMatch[]>([]);
+  const [searchId, setSearchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [contacting, setContacting] = useState<string | null>(null);
 
@@ -30,12 +31,13 @@ export default function MatchOwnersScreen() {
     (async () => {
       if (!photo) { setError('Foto não informada.'); setLoading(false); return; }
       try {
-        const res = await matchPetByPhoto(
+        const { searchId: sid, results } = await matchPetByPhoto(
           photo,
           lat ? Number(lat) : undefined,
           lng ? Number(lng) : undefined,
         );
-        setMatches(res);
+        setSearchId(sid);
+        setMatches(results);
       } catch (e: any) {
         setError(e?.message ?? 'Falha ao analisar a foto.');
       } finally {
@@ -49,6 +51,7 @@ export default function MatchOwnersScreen() {
     setContacting(m.id);
     try {
       const r = await contactOwner(m.id, sourcePetId);
+      if (searchId) submitMatchFeedback(searchId, 'contacted', m.id);
       router.replace(`/chat/${r.petId}?tutorId=${r.tutorId}`);
     } catch (e: any) {
       toast.error(e?.message ?? 'Não foi possível abrir o chat.');
