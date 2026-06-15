@@ -4403,7 +4403,7 @@ app.post(
     // (pets antigos têm species=null no cadastro; as tags do backfill cobrem isso).
     const candSpeciesOf = (p: any): string | null =>
       p.species ?? tagsById.get(p.id)?.species ?? null;
-    const results = candidates
+    const scored = candidates
       .filter((p) => {
         const cs = candSpeciesOf(p);
         return !(searchTags?.species && cs && searchTags.species !== cs);
@@ -4446,6 +4446,12 @@ app.post(
       .filter((r) => !hasLoc || (r.distance != null && r.distance <= radiusM))
       .sort((a, b) => b.match_score - a.match_score);
 
+    // Cor claramente incompatível (gate de alta precisão) ⇒ quase certamente NÃO é
+    // o mesmo pet: oculta da lista exibida. O gate só dispara com inversão de cor
+    // dominante + confiança alta dos dois lados + salto de luminância — nunca no
+    // mesmo pet sob luz diferente (verificado). Os gated ficam no log p/ calibrar.
+    const results = scored.filter((r) => !r.gate);
+
     // 5. Instrumentação (best-effort) — registra a busca p/ avaliar/calibrar depois
     let searchId: string | null = null;
     try {
@@ -4460,7 +4466,7 @@ app.post(
           search_tags: searchTags,
           seen_at: new Date(seenAtMs).toISOString(),
           candidate_count: candidates.length,
-          results: results.slice(0, 10).map((r) => ({
+          results: scored.slice(0, 10).map((r) => ({
             pet_id: r.id, similarity: r.similarity, match_score: r.match_score, strength: r.strength, gate: r.gate,
           })),
         })
