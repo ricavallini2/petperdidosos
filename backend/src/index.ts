@@ -3020,7 +3020,11 @@ app.post(
       generatePetVisionTags(mainPhoto)
         .then(async (tags) => {
           if (tags) {
-            await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+            const patch: any = { vision_tags: tags };
+            // Espécie detectada quando o cadastro não a informou — habilita o
+            // filtro duro gato×cachorro no /pets/match já no primeiro cadastro.
+            if (tags.species && !pet.species) patch.species = tags.species;
+            await supabase.from('pets').update(patch).eq('id', pet.id);
             console.log(`[vision] pet ${pet.id} tagueado`);
           }
         })
@@ -4395,8 +4399,15 @@ app.post(
     }
 
     // 4. Filtros duros (espécie + temporal) + score híbrido (visual + atributos + geo)
+    // Espécie efetiva do candidato = coluna do cadastro OU espécie das vision-tags
+    // (pets antigos têm species=null no cadastro; as tags do backfill cobrem isso).
+    const candSpeciesOf = (p: any): string | null =>
+      p.species ?? tagsById.get(p.id)?.species ?? null;
     const results = candidates
-      .filter((p) => !(searchTags?.species && p.species && searchTags.species !== p.species))
+      .filter((p) => {
+        const cs = candSpeciesOf(p);
+        return !(searchTags?.species && cs && searchTags.species !== cs);
+      })
       .filter((p) => {
         const ld = p.lost_date ? new Date(p.lost_date).getTime() : null;
         return ld == null || ld <= seenAtMs + FUTURE_GRACE_MS;
@@ -4411,7 +4422,8 @@ app.post(
         // Penaliza discordâncias claras (cor/porte muito diferentes) — empurra pra
         // baixo candidatos visualmente "parecidos" que claramente NÃO são o pet.
         if (disagree > 0) score *= Math.max(0.4, 1 - 0.25 * disagree);
-        const speciesOk = !searchTags?.species || !p.species || searchTags.species === p.species;
+        const candSpecies = candSpeciesOf(p);
+        const speciesOk = !searchTags?.species || !candSpecies || searchTags.species === candSpecies;
         const strength: 'forte' | 'possivel' =
           disagree === 0 &&
           (visualSim >= strongThreshold || (score >= strongThreshold && attrScore >= 0.5 && reasons.length >= 1)) &&
@@ -4531,7 +4543,7 @@ app.post(
     }
     const { data: pets, error } = await supabase
       .from('pets')
-      .select('id, main_photo_url')
+      .select('id, main_photo_url, species')
       .is('vision_tags', null)
       .eq('status', 'ativo');
     if (error) throw error;
@@ -4542,7 +4554,11 @@ app.post(
       for (const pet of pets ?? []) {
         try {
           const tags = await generatePetVisionTags(pet.main_photo_url);
-          if (tags) await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+          if (tags) {
+            const patch: any = { vision_tags: tags };
+            if (tags.species && !pet.species) patch.species = tags.species;
+            await supabase.from('pets').update(patch).eq('id', pet.id);
+          }
           console.log(`[backfill-vision] pet ${pet.id} OK`);
         } catch (e: any) {
           console.error(`[backfill-vision] pet ${pet.id} falhou:`, e.message);
@@ -5724,11 +5740,17 @@ async function autoBackfillMatchData() {
       }
     }
     if (isVisionTagsEnabled()) {
-      const { data } = await supabase.from('pets').select('id, main_photo_url').eq('status', 'ativo').is('vision_tags', null);
+      const { data } = await supabase.from('pets').select('id, main_photo_url, species').eq('status', 'ativo').is('vision_tags', null);
       for (const pet of data ?? []) {
         try {
           const tags = await generatePetVisionTags(pet.main_photo_url);
-          if (tags) await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+          if (tags) {
+            const patch: any = { vision_tags: tags };
+            // Preenche a espécie no cadastro quando ainda não há (habilita o filtro
+            // duro gato×cachorro pelo caminho direto e corrige estatísticas).
+            if (tags.species && !pet.species) patch.species = tags.species;
+            await supabase.from('pets').update(patch).eq('id', pet.id);
+          }
           console.log(`[auto-backfill] vision-tags ${pet.id}`);
         } catch (e: any) { console.error(`[auto-backfill] vision-tags ${pet.id} falhou:`, e.message); }
       }
