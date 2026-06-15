@@ -144,6 +144,10 @@ function marksSimilar(a: string, b: string): boolean {
   return b.split(/\s+/).some((w) => w.length > 2 && ta.has(w));
 }
 
+function isOppositeSize(a: string, b: string): boolean {
+  return (a === 'pequeno' && b === 'grande') || (a === 'grande' && b === 'pequeno');
+}
+
 /**
  * Concordância de atributos entre a foto da busca e um candidato. Retorna um
  * score 0..1 e a lista de motivos (para exibir "por que casou" na UI).
@@ -152,14 +156,15 @@ function marksSimilar(a: string, b: string): boolean {
 export function attributeAgreement(
   search: VisionTags | null,
   candidate: { vision_tags?: any; color?: string | null; size?: string | null },
-): { score: number; reasons: string[]; comparable: number } {
-  if (!search) return { score: 0, reasons: [], comparable: 0 };
+): { score: number; reasons: string[]; comparable: number; disagree: number } {
+  if (!search) return { score: 0, reasons: [], comparable: 0, disagree: 0 };
   const candTags: VisionTags | null =
     candidate.vision_tags && typeof candidate.vision_tags === 'object' ? candidate.vision_tags : null;
 
   const reasons: string[] = [];
   let hits = 0;
   let comparable = 0;
+  let disagree = 0; // discordâncias claras (cor/porte muito diferentes) = sinal de "não é"
 
   // Cor primária (tags do candidato ou cor de cadastro em texto livre)
   const sColor = colorKey(search.color_primary);
@@ -167,12 +172,14 @@ export function attributeAgreement(
   if (sColor && cColor) {
     comparable++;
     if (sColor === cColor) { hits++; reasons.push(`mesma cor (${sColor})`); }
+    else disagree++; // ex.: preto x branco — quase certamente não é o mesmo pet
   }
 
   // Padrão de pelagem
   if (search.pattern && candTags?.pattern) {
     comparable++;
     if (search.pattern === candTags.pattern) { hits++; reasons.push(`mesmo padrão (${search.pattern})`); }
+    else disagree++;
   }
 
   // Porte
@@ -180,6 +187,7 @@ export function attributeAgreement(
   if (search.size_estimate && cSize) {
     comparable++;
     if (search.size_estimate === cSize) { hits++; reasons.push('porte parecido'); }
+    else if (isOppositeSize(search.size_estimate, cSize)) disagree++; // só pequeno x grande
   }
 
   // Pelagem (curto/médio/longo)
@@ -201,7 +209,7 @@ export function attributeAgreement(
   }
 
   const score = comparable > 0 ? Math.min(1, hits / comparable) : 0;
-  return { score, reasons, comparable };
+  return { score, reasons, comparable, disagree };
 }
 
 /**

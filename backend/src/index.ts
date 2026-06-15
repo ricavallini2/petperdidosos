@@ -4404,13 +4404,18 @@ app.post(
       .map((p) => {
         const distance = hasLoc ? haversineMeters(latitude, longitude, p.latitude, p.longitude) : null;
         const visualSim = Number(p.similarity); // 0..1
-        const { score: attrScore, reasons, comparable } = attributeAgreement(searchTags, {
+        const { score: attrScore, reasons, comparable, disagree } = attributeAgreement(searchTags, {
           vision_tags: tagsById.get(p.id), color: p.color, size: p.size,
         });
-        const score = hybridScore(visualSim, attrScore, comparable > 0, distance, radiusM);
+        let score = hybridScore(visualSim, attrScore, comparable > 0, distance, radiusM);
+        // Penaliza discordâncias claras (cor/porte muito diferentes) — empurra pra
+        // baixo candidatos visualmente "parecidos" que claramente NÃO são o pet.
+        if (disagree > 0) score *= Math.max(0.4, 1 - 0.25 * disagree);
         const speciesOk = !searchTags?.species || !p.species || searchTags.species === p.species;
         const strength: 'forte' | 'possivel' =
-          (visualSim >= strongThreshold || (score >= strongThreshold && attrScore >= 0.5 && reasons.length >= 1)) && speciesOk
+          disagree === 0 &&
+          (visualSim >= strongThreshold || (score >= strongThreshold && attrScore >= 0.5 && reasons.length >= 1)) &&
+          speciesOk
             ? 'forte' : 'possivel';
         const owner = ownerById.get(p.user_id);
         return {
@@ -5703,7 +5708,40 @@ app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: 
   res.status(status).json({ error: status === 500 ? 'Erro interno do servidor' : err.message });
 });
 
+// Backfill automático na subida: gera embedding + vision-tags dos pets ativos
+// que ainda não têm (idempotente; serializado pela fila do embedding). Assim os
+// pets já cadastrados ganham as características sem nenhuma ação manual.
+async function autoBackfillMatchData() {
+  try {
+    if (isEmbeddingEnabled()) {
+      const { data } = await supabase.from('pets').select('id, main_photo_url').eq('status', 'ativo').is('embedding', null);
+      for (const pet of data ?? []) {
+        try {
+          const emb = await generateImageEmbedding(pet.main_photo_url);
+          await supabase.from('pets').update({ embedding: emb }).eq('id', pet.id);
+          console.log(`[auto-backfill] embedding ${pet.id}`);
+        } catch (e: any) { console.error(`[auto-backfill] embedding ${pet.id} falhou:`, e.message); }
+      }
+    }
+    if (isVisionTagsEnabled()) {
+      const { data } = await supabase.from('pets').select('id, main_photo_url').eq('status', 'ativo').is('vision_tags', null);
+      for (const pet of data ?? []) {
+        try {
+          const tags = await generatePetVisionTags(pet.main_photo_url);
+          if (tags) await supabase.from('pets').update({ vision_tags: tags }).eq('id', pet.id);
+          console.log(`[auto-backfill] vision-tags ${pet.id}`);
+        } catch (e: any) { console.error(`[auto-backfill] vision-tags ${pet.id} falhou:`, e.message); }
+      }
+    }
+  } catch (e: any) {
+    console.error('[auto-backfill] erro:', e.message);
+  }
+}
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✓ PetPerdidoSOS backend rodando em http://0.0.0.0:${PORT}`);
   console.log(`  Health: http://localhost:${PORT}/health`);
+  // Processa pets sem embedding/características alguns segundos após subir
+  // (não bloqueia o boot; a fila serializa as chamadas ao Replicate).
+  setTimeout(() => { void autoBackfillMatchData(); }, 8000);
 });
