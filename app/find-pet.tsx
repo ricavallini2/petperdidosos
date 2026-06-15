@@ -312,8 +312,8 @@ export default function FindPetScreen() {
                 )}
               </View>
             </View>
-            <View style={[styles.simBadge, { backgroundColor: similarityColor(item.similarity) }]}>
-              <Text style={styles.simBadgeValue}>{item.similarity}%</Text>
+            <View style={[styles.simBadge, { backgroundColor: similarityColor(item.match_score ?? item.similarity) }]}>
+              <Text style={styles.simBadgeValue}>{item.match_score ?? item.similarity}%</Text>
               <Text style={styles.simBadgeLabel}>match</Text>
             </View>
           </TouchableOpacity>
@@ -410,8 +410,8 @@ export default function FindPetScreen() {
                 <Image source={{ uri: selected.photo_url }} style={styles.modalImg} />
                 <View style={styles.modalTitleRow}>
                   <Text style={styles.modalName}>{selected.name}</Text>
-                  <View style={[styles.simBadge, { backgroundColor: similarityColor(selected.similarity) }]}>
-                    <Text style={styles.simBadgeValue}>{selected.similarity}%</Text>
+                  <View style={[styles.simBadge, { backgroundColor: similarityColor(selected.match_score ?? selected.similarity) }]}>
+                    <Text style={styles.simBadgeValue}>{selected.match_score ?? selected.similarity}%</Text>
                     <Text style={styles.simBadgeLabel}>match</Text>
                   </View>
                 </View>

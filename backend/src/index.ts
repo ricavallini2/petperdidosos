@@ -4415,7 +4415,7 @@ app.post(
       .map((p) => {
         const distance = hasLoc ? haversineMeters(latitude, longitude, p.latitude, p.longitude) : null;
         const visualSim = Number(p.similarity); // 0..1
-        const { score: attrScore, reasons, comparable, disagree } = attributeAgreement(searchTags, {
+        const { score: attrScore, reasons, comparable, disagree, gate } = attributeAgreement(searchTags, {
           vision_tags: tagsById.get(p.id), color: p.color, size: p.size,
         });
         let score = hybridScore(visualSim, attrScore, comparable > 0, distance, radiusM);
@@ -4439,6 +4439,7 @@ app.post(
           match_score: Math.round(score * 100),    // 0-100 (sinal combinado — usado p/ ordenar)
           strength,
           reasons,
+          gate, // gate de cor disparou (instrumentação p/ calibrar)
           distance,
         };
       })
@@ -4460,7 +4461,7 @@ app.post(
           seen_at: new Date(seenAtMs).toISOString(),
           candidate_count: candidates.length,
           results: results.slice(0, 10).map((r) => ({
-            pet_id: r.id, similarity: r.similarity, match_score: r.match_score, strength: r.strength,
+            pet_id: r.id, similarity: r.similarity, match_score: r.match_score, strength: r.strength, gate: r.gate,
           })),
         })
         .select('id')
@@ -4541,17 +4542,20 @@ app.post(
     if (!isVisionTagsEnabled()) {
       return res.status(503).json({ error: 'ANTHROPIC_API_KEY ausente' });
     }
-    const { data: pets, error } = await supabase
+    const { data: allActive, error } = await supabase
       .from('pets')
-      .select('id, main_photo_url, species')
-      .is('vision_tags', null)
+      .select('id, main_photo_url, species, vision_tags')
       .eq('status', 'ativo');
     if (error) throw error;
+    // Re-tagueia quem não tem tags OU tem tags antigas sem coat_colors (idempotente).
+    const pets = (allActive ?? []).filter(
+      (p: any) => !p.vision_tags || !Array.isArray(p.vision_tags.coat_colors) || p.vision_tags.coat_colors.length === 0,
+    );
 
-    res.json({ message: `Backfill de características iniciado para ${pets?.length ?? 0} pets`, count: pets?.length ?? 0 });
+    res.json({ message: `Backfill de características iniciado para ${pets.length} pets`, count: pets.length });
 
     (async () => {
-      for (const pet of pets ?? []) {
+      for (const pet of pets) {
         try {
           const tags = await generatePetVisionTags(pet.main_photo_url);
           if (tags) {
@@ -5740,8 +5744,13 @@ async function autoBackfillMatchData() {
       }
     }
     if (isVisionTagsEnabled()) {
-      const { data } = await supabase.from('pets').select('id, main_photo_url, species').eq('status', 'ativo').is('vision_tags', null);
-      for (const pet of data ?? []) {
+      const { data } = await supabase.from('pets').select('id, main_photo_url, species, vision_tags').eq('status', 'ativo');
+      // Re-tagueia quem não tem tags OU tem tags antigas sem coat_colors (idempotente).
+      const pending = (data ?? []).filter(
+        (p: any) => !p.vision_tags || !Array.isArray(p.vision_tags.coat_colors) || p.vision_tags.coat_colors.length === 0,
+      );
+      console.log(`[auto-backfill] ${pending.length} pet(s) p/ (re)tag de características`);
+      for (const pet of pending) {
         try {
           const tags = await generatePetVisionTags(pet.main_photo_url);
           if (tags) {

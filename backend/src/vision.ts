@@ -26,6 +26,9 @@ export interface VisionTags {
   size_estimate: 'pequeno' | 'medio' | 'grande' | null;
   distinctive_marks: string[];
   confidence: number; // 0..1
+  // Composição de cor da PELAGEM (grupo de cor + % da pelagem, desc). Opcional
+  // para retrocompat: pets antigos não têm; o match cai no fallback de cor única.
+  coat_colors?: { color: string; pct: number }[];
 }
 
 const VISION_SYSTEM =
@@ -41,6 +44,8 @@ const VISION_PROMPT =
   '- coat: curto | medio | longo | null\n' +
   '- size_estimate: pequeno | medio | grande | null\n' +
   '- distinctive_marks: array de 0 a 5 marcas distintivas curtas em pt-br (ex.: "peito branco", "orelha esquerda preta", "meia branca pata traseira", "mancha no olho direito"). NÃO invente — apenas o que ver claramente.\n' +
+  '- coat_colors: array ordenado por proporção DECRESCENTE de objetos {"color": <cor pt-br>, "pct": <inteiro>}, estimando a fração da PELAGEM de cada cor (somando ~100). Considere SOMENTE o animal: IGNORE grama, chão, parede, céu, objetos, sombras e reflexos do fundo. Use os mesmos nomes de cor de color_primary. 1 a 4 itens.\n' +
+  '- IMPORTANTE: pelos de um pet PRETO clareados/desbotados pelo sol CONTINUAM sendo preto; brilho/reflexo de luz NÃO é uma cor. Só registre uma 2ª cor (e só use pattern diferente de solido) se houver manchas de COR REALMENTE DIFERENTE, bem definidas e em área relevante (>~15% da pelagem).\n' +
   '- confidence: número de 0 a 1\n' +
   'Use null quando não tiver certeza. Não adicione comentários nem texto fora do JSON.';
 
@@ -51,6 +56,32 @@ function pick<T extends string>(v: unknown, allowed: readonly T[]): T | null {
 }
 function cleanStr(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : null;
+}
+
+/**
+ * Normaliza coat_colors: agrupa por colorKey (sinônimos), descarta cores <5%
+ * (ruído de sol/sombra), renormaliza para inteiros somando ~100, no máx. 3.
+ * Lixo/ausente → undefined (o match cai no fallback de cor única).
+ */
+function normCoat(arr: unknown): { color: string; pct: number }[] | undefined {
+  if (!Array.isArray(arr)) return undefined;
+  const acc = new Map<string, number>();
+  for (const e of arr as any[]) {
+    const k = colorKey(e?.color);
+    const p = Number(e?.pct);
+    if (k && Number.isFinite(p) && p > 0) acc.set(k, (acc.get(k) ?? 0) + p);
+  }
+  let items = [...acc].map(([color, pct]) => ({ color, pct }));
+  const tot = items.reduce((s, i) => s + i.pct, 0);
+  if (tot <= 0) return undefined;
+  items = items
+    .map((i) => ({ color: i.color, pct: i.pct / tot }))
+    .filter((i) => i.pct >= 0.05)
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3);
+  const t2 = items.reduce((s, i) => s + i.pct, 0);
+  if (t2 <= 0) return undefined;
+  return items.map((i) => ({ color: i.color, pct: Math.round((i.pct / t2) * 100) }));
 }
 
 /** Parser robusto: extrai o 1º objeto JSON do texto e valida/coage os campos. */
@@ -77,6 +108,7 @@ export function parseVisionTags(text: string): VisionTags | null {
     size_estimate: pick(obj.size_estimate, ['pequeno', 'medio', 'grande'] as const),
     distinctive_marks: marks,
     confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0.5,
+    coat_colors: normCoat(obj.coat_colors),
   };
 }
 
@@ -96,7 +128,7 @@ export async function generatePetVisionTags(imageUrl: string): Promise<VisionTag
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
     model: VISION_MODEL,
-    max_tokens: 400,
+    max_tokens: 500,
     system: VISION_SYSTEM,
     messages: [{
       role: 'user',
@@ -144,6 +176,58 @@ function marksSimilar(a: string, b: string): boolean {
   return b.split(/\s+/).some((w) => w.length > 2 && ta.has(w));
 }
 
+/** Vetor de cor da pelagem: grupo de cor → fração 0..1 (a partir de coat_colors). */
+function coatVec(t: VisionTags | null | undefined): Record<string, number> | null {
+  if (!t?.coat_colors?.length) return null;
+  const v: Record<string, number> = {};
+  let s = 0;
+  for (const c of t.coat_colors) {
+    const k = colorKey(c.color) ?? c.color;
+    v[k] = (v[k] ?? 0) + c.pct;
+    s += c.pct;
+  }
+  if (s <= 0) return null;
+  for (const k in v) v[k] /= s;
+  return v;
+}
+
+/** Distância L1/2 entre vetores de cor: 0 = idênticos, 1 = disjuntos. */
+function colorDistance(a: Record<string, number>, b: Record<string, number>): number {
+  const ks = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let d = 0;
+  for (const k of ks) d += Math.abs((a[k] ?? 0) - (b[k] ?? 0));
+  return d / 2;
+}
+
+// Escala grosseira de luminância por grupo de cor. O gate só dispara entre cores
+// de luminância CLARAMENTE distinta (salto ≥2) — evita punir o MESMO pet quando o
+// modelo oscila entre cores confundíveis (marrom↔caramelo, cinza↔preto, branco↔creme).
+const COLOR_LIGHTNESS: Record<string, number> = {
+  preto: 0, cinza: 1, marrom: 1, tigrado: 1, caramelo: 2, laranja: 2, branco: 3,
+};
+
+/**
+ * Gate CONSERVADOR de inversão de dominante: só true quando (a) uma cor domina
+ * forte (≥65%) num lado e está quase ausente (≤15%) no outro — composições quase
+ * invertidas (preto-sólido × branco-manchado) — E (b) os dominantes têm luminância
+ * claramente distinta. Variação normal de luz desloca dentro do mesmo grupo
+ * (preto continua preto) e nunca atinge esses limiares juntos.
+ */
+function dominantIncompatible(dS: Record<string, number>, dC: Record<string, number>): boolean {
+  const dom = (d: Record<string, number>): [string, number] => {
+    const e = Object.entries(d).sort((x, y) => y[1] - x[1])[0];
+    return e ? [e[0], e[1]] : ['', 0];
+  };
+  const [gS, pS] = dom(dS);
+  const [gC, pC] = dom(dC);
+  const inverted = (pS >= 0.65 && (dC[gS] ?? 0) <= 0.15) || (pC >= 0.65 && (dS[gC] ?? 0) <= 0.15);
+  if (!inverted) return false;
+  const lS = COLOR_LIGHTNESS[gS];
+  const lC = COLOR_LIGHTNESS[gC];
+  if (lS == null || lC == null) return false; // cor fora da escala conhecida → não arrisca
+  return Math.abs(lS - lC) >= 2;
+}
+
 function isOppositeSize(a: string, b: string): boolean {
   return (a === 'pequeno' && b === 'grande') || (a === 'grande' && b === 'pequeno');
 }
@@ -156,8 +240,8 @@ function isOppositeSize(a: string, b: string): boolean {
 export function attributeAgreement(
   search: VisionTags | null,
   candidate: { vision_tags?: any; color?: string | null; size?: string | null },
-): { score: number; reasons: string[]; comparable: number; disagree: number } {
-  if (!search) return { score: 0, reasons: [], comparable: 0, disagree: 0 };
+): { score: number; reasons: string[]; comparable: number; disagree: number; gate: boolean } {
+  if (!search) return { score: 0, reasons: [], comparable: 0, disagree: 0, gate: false };
   const candTags: VisionTags | null =
     candidate.vision_tags && typeof candidate.vision_tags === 'object' ? candidate.vision_tags : null;
 
@@ -166,20 +250,47 @@ export function attributeAgreement(
   let comparable = 0;
   let disagree = 0; // discordâncias claras (cor/porte muito diferentes) = sinal de "não é"
 
-  // Cor primária (tags do candidato ou cor de cadastro em texto livre)
-  const sColor = colorKey(search.color_primary);
-  const cColor = colorKey(candTags?.color_primary) ?? colorKey(candidate.color);
-  if (sColor && cColor) {
+  // Cor da pelagem — preferir a COMPOSIÇÃO (coat_colors): distingue "preto sólido"
+  // de "branco com manchas pretas", o que a cor #1 sozinha não faz. Se faltar
+  // coat_colors (tags antigas), cai no fallback de cor única (comportamento atual).
+  let colorGateFired = false;
+  const vS = coatVec(search);
+  const vC = coatVec(candTags);
+  if (vS && vC) {
     comparable++;
-    if (sColor === cColor) { hits++; reasons.push(`mesma cor (${sColor})`); }
-    else disagree++; // ex.: preto x branco — quase certamente não é o mesmo pet
+    const agree = 1 - colorDistance(vS, vC); // graduado 0..1 (substitui o binário)
+    hits += agree;
+    if (agree >= 0.65 && search.coat_colors?.length) {
+      const top = search.coat_colors[0];
+      reasons.push(`cor compatível (${top.color} ~${top.pct}%)`);
+    }
+    // Gate de inversão de dominante — só com confiança alta dos DOIS lados
+    // (foto ruim de sol vem com confidence baixa → gate desligado, sem regressão).
+    const conf = (search.confidence ?? 0) >= 0.7 && (candTags?.confidence ?? 0) >= 0.7;
+    if (conf && dominantIncompatible(vS, vC)) { disagree++; colorGateFired = true; }
+  } else {
+    const sColor = colorKey(search.color_primary);
+    const cColor = colorKey(candTags?.color_primary) ?? colorKey(candidate.color);
+    if (sColor && cColor) {
+      comparable++;
+      if (sColor === cColor) { hits++; reasons.push(`mesma cor (${sColor})`); }
+      else disagree++; // ex.: preto x branco — quase certamente não é o mesmo pet
+    }
   }
 
-  // Padrão de pelagem
+  // Padrão de pelagem. Com coat_colors vira só REFORÇO (a cor já é o canal de
+  // discordância da pelagem) e é suprimido se o gate disparou — evita o chip
+  // enganoso "mesmo padrão (bicolor)" e a dupla-contagem do mesmo fenômeno.
   if (search.pattern && candTags?.pattern) {
-    comparable++;
-    if (search.pattern === candTags.pattern) { hits++; reasons.push(`mesmo padrão (${search.pattern})`); }
-    else disagree++;
+    if (vS && vC) {
+      if (search.pattern === candTags.pattern && !colorGateFired) {
+        hits++; reasons.push(`mesmo padrão (${search.pattern})`);
+      }
+    } else {
+      comparable++;
+      if (search.pattern === candTags.pattern) { hits++; reasons.push(`mesmo padrão (${search.pattern})`); }
+      else disagree++;
+    }
   }
 
   // Porte
@@ -209,7 +320,7 @@ export function attributeAgreement(
   }
 
   const score = comparable > 0 ? Math.min(1, hits / comparable) : 0;
-  return { score, reasons, comparable, disagree };
+  return { score, reasons, comparable, disagree, gate: colorGateFired };
 }
 
 /**
