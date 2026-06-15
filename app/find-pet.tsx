@@ -77,7 +77,7 @@ export default function FindPetScreen() {
   const analyze = async () => {
     if (!photoUri || !user) return;
 
-    const check = await useAiSearchApi(user.id);
+    const check = await useAiSearchApi(user.id, { checkOnly: true });
     if (check.error) {
       toast.error('Não foi possível verificar sua busca por IA. Confira a conexão e tente de novo.');
       return;
@@ -121,6 +121,10 @@ export default function FindPetScreen() {
       const { searchId: sid, results: matches } = await matchPetByPhoto(publicUrl, lat, lng);
       setSearchId(sid);
       setResults(matches);
+      // Sucesso: só AGORA debita 1 busca (não-premium). Em falha, nada é debitado.
+      useAiSearchApi(user.id)
+        .then((u) => { if (u.aiSearchesLeft != null) setAiSearchesLeft(u.aiSearchesLeft); })
+        .catch(() => {});
     } catch (e: any) {
       toast.error(e?.message ?? 'Tente novamente.', 'Erro na análise');
     } finally {

@@ -4355,7 +4355,7 @@ app.post(
     // 1. Em paralelo (escondem a latência): embedding (CLIP, sinal visual) +
     //    características/manchas/padrões da foto (vision-tags, best-effort).
     const [embRes, tagRes] = await Promise.allSettled([
-      generateImageEmbedding(photo_url),
+      generateImageEmbedding(photo_url, { maxRetries: 1 }), // busca: falha rápido (a fila já evita 429)
       generatePetVisionTags(photo_url),
     ]);
     if (embRes.status === 'rejected') {
@@ -4665,6 +4665,9 @@ app.post(
   requireUser,
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
+    // check_only = só verifica se pode buscar, SEM debitar a cota. O app debita
+    // de verdade apenas após a busca por IA dar certo (não queima cota em falha).
+    const checkOnly = req.body?.check_only === true;
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -4698,6 +4701,15 @@ app.post(
         aiSearchesLeft: 0,
         aiSearchesUsed: searchesThisMonth,
         aiSearchesLimit: AI_SEARCH_MONTHLY_LIMIT,
+      });
+    }
+
+    if (checkOnly) {
+      return res.json({
+        allowed: true,
+        isPremium: false,
+        aiSearchesLeft: AI_SEARCH_MONTHLY_LIMIT - searchesThisMonth,
+        aiSearchesUsed: searchesThisMonth,
       });
     }
 

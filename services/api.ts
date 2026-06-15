@@ -823,11 +823,15 @@ export const subscribePremium = async (userId: string, planType: 'monthly' | 'li
   return response.json();
 };
 
-export const useAiSearchApi = async (userId: string): Promise<{ allowed: boolean; aiSearchesLeft: number | null; isPremium: boolean; error?: string }> => {
+export const useAiSearchApi = async (
+  userId: string,
+  opts?: { checkOnly?: boolean },
+): Promise<{ allowed: boolean; aiSearchesLeft: number | null; isPremium: boolean; error?: string }> => {
   try {
     const response = await authedFetch(`${API_URL}/user/${userId}/ai-search/use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ check_only: opts?.checkOnly ?? false }),
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));

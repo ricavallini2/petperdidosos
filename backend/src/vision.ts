@@ -219,9 +219,11 @@ export function hybridScore(
 ): number {
   const hasGeo = distanceM != null && Number.isFinite(distanceM);
   const geoScore = hasGeo ? Math.max(0, 1 - (distanceM as number) / Math.max(1, radiusM)) : 0;
-  let wV = 0.55;
-  let wA = hasAttr ? 0.30 : 0;
-  let wG = hasGeo ? 0.15 : 0;
+  // Visual dominante (CLIP), com atributos/geo como reforço — evita reordenar
+  // demais por proximidade. Recalibrar quando houver dados em match_searches.
+  let wV = 0.70;
+  let wA = hasAttr ? 0.22 : 0;
+  let wG = hasGeo ? 0.08 : 0;
   const total = wV + wA + wG;
   wV /= total; wA /= total; wG /= total;
   return wV * Math.max(0, Math.min(1, visualSim)) + wA * attrScore + wG * geoScore;

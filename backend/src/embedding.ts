@@ -4,7 +4,11 @@
  * Usa o endpoint /v1/predictions com `version` (modelo da comunidade) +
  * header `Prefer: wait`, que aguarda o resultado de forma síncrona (~60s).
  *
- * Modelo: krthr/clip-embeddings — aceita { image } ou { text }, devolve { embedding }.
+ * As chamadas ao Replicate são SERIALIZADAS (single-flight): a conta tem burst
+ * baixo (1 req/s sem cartão de crédito), então disparar chamadas concorrentes
+ * (cadastro de pet + busca ao mesmo tempo) gerava HTTP 429. A fila garante uma
+ * chamada por vez — elimina o 429 na origem. Cada chamada tem timeout para não
+ * travar a request do usuário além da janela do `Prefer: wait`.
  */
 
 const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN;
@@ -19,35 +23,72 @@ export function isEmbeddingEnabled(): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MAX_RETRIES = 4;
+const DEFAULT_TIMEOUT_MS = 75_000; // acima dos ~60s do `Prefer: wait`
 
-export async function generateImageEmbedding(imageUrl: string, attempt = 0): Promise<number[]> {
+// Fila single-flight: uma chamada ao Replicate por vez (cadastro/busca não competem).
+let replicateChain: Promise<unknown> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const run = replicateChain.then(fn, fn);
+  replicateChain = run.catch(() => {}); // uma rejeição nunca quebra a fila
+  return run as Promise<T>;
+}
+
+export async function generateImageEmbedding(
+  imageUrl: string,
+  opts: { maxRetries?: number; timeoutMs?: number } = {},
+): Promise<number[]> {
+  return serialize(() =>
+    callReplicate(imageUrl, opts.maxRetries ?? MAX_RETRIES, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, 0),
+  );
+}
+
+async function callReplicate(
+  imageUrl: string,
+  maxRetries: number,
+  timeoutMs: number,
+  attempt: number,
+): Promise<number[]> {
   if (!REPLICATE_TOKEN) {
     throw new Error('REPLICATE_API_TOKEN não configurado no .env');
   }
 
-  const response = await fetch('https://api.replicate.com/v1/predictions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${REPLICATE_TOKEN}`,
-      'Content-Type': 'application/json',
-      Prefer: 'wait',
-    },
-    body: JSON.stringify({
-      version: MODEL_VERSION,
-      input: { image: imageUrl },
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: any;
+  try {
+    response = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        Prefer: 'wait',
+      },
+      body: JSON.stringify({
+        version: MODEL_VERSION,
+        input: { image: imageUrl },
+      }),
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      throw new Error('A análise demorou demais. Tente novamente em instantes.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 
-  // 429 = limite de taxa (conta com pouco crédito tem burst de 1). Reenvia
-  // respeitando o tempo de reset informado pela Replicate.
-  if (response.status === 429 && attempt < MAX_RETRIES) {
+  // 429 = limite de taxa. Como as chamadas já são serializadas, isso só ocorre
+  // sob throttling da conta — reenvia respeitando o tempo de reset + jitter.
+  if (response.status === 429 && attempt < maxRetries) {
     const text = await response.text().catch(() => '');
     const retryAfter = Number(response.headers.get('retry-after'));
     const m = text.match(/resets? in (\d+)\s*s/i);
     const waitSec = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : m ? Number(m[1]) : 3;
-    console.warn(`[embedding] 429 da Replicate — aguardando ${waitSec + 1}s (tentativa ${attempt + 1}/${MAX_RETRIES})`);
-    await sleep((waitSec + 1) * 1000);
-    return generateImageEmbedding(imageUrl, attempt + 1);
+    const jitter = Math.floor(Math.random() * 500);
+    console.warn(`[embedding] 429 da Replicate — aguardando ${waitSec + 1}s (tentativa ${attempt + 1}/${maxRetries})`);
+    await sleep((waitSec + 1) * 1000 + jitter);
+    return callReplicate(imageUrl, maxRetries, timeoutMs, attempt + 1);
   }
 
   if (!response.ok) {
