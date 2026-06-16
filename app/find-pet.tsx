@@ -78,12 +78,13 @@ export default function FindPetScreen() {
     if (!photoUri || !user) return;
 
     const check = await useAiSearchApi(user.id, { checkOnly: true });
-    if (check.error) {
-      toast.error('Não foi possível verificar sua busca por IA. Confira a conexão e tente de novo.');
+    if (!check.allowed && !check.error) {
+      // Cota mensal esgotada (não-premium): mostra o paywall, não erro.
+      setShowPaywall(true);
       return;
     }
-    if (!check.allowed) {
-      setShowPaywall(true);
+    if (check.error) {
+      toast.error('Não conseguimos iniciar a busca agora. Verifique sua conexão e tente novamente em instantes.', 'Erro temporário');
       return;
     }
     if (check.aiSearchesLeft != null) setAiSearchesLeft(check.aiSearchesLeft);

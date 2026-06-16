@@ -835,6 +835,11 @@ export const useAiSearchApi = async (
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
+      // 402 = cota mensal esgotada: é um "não permitido" deliberado (→ paywall),
+      // NÃO um erro de conexão. Sem `error`, a tela cai no fluxo de paywall.
+      if (response.status === 402) {
+        return { allowed: false, aiSearchesLeft: 0, isPremium: false };
+      }
       return { allowed: false, aiSearchesLeft: null, isPremium: false, error: err.error || `Erro HTTP: ${response.status}` };
     }
     return await response.json();
