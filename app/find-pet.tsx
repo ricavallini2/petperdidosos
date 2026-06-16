@@ -145,6 +145,33 @@ export default function FindPetScreen() {
     });
   };
 
+  // CTA reaproveitada: cadastrar o pet (visto/resgatado) com a MESMA foto da busca.
+  // Usada tanto quando nada é encontrado quanto após "Nenhum é o meu pet".
+  const renderRegisterCtas = () => (
+    <>
+      <Text style={styles.emptyCtaTitle}>Quer ajudar este pet?</Text>
+      <Text style={styles.emptyCtaSub}>
+        Cadastre um alerta com esta mesma foto para que o tutor possa encontrá-lo.
+      </Text>
+      <TouchableOpacity
+        style={[styles.emptyCtaBtn, { backgroundColor: '#F79F1F' }]}
+        activeOpacity={0.9}
+        onPress={() => registerAs('sighted')}
+      >
+        <Ionicons name="eye" size={20} color="#FFF" />
+        <Text style={styles.emptyCtaBtnText}>Cadastrar pet visto</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.emptyCtaBtn, { backgroundColor: '#20BF6B' }]}
+        activeOpacity={0.9}
+        onPress={() => registerAs('rescued')}
+      >
+        <Ionicons name="heart" size={20} color="#FFF" />
+        <Text style={styles.emptyCtaBtnText}>Cadastrar pet resgatado</Text>
+      </TouchableOpacity>
+    </>
+  );
+
   const sortedResults = React.useMemo(() => {
     if (!results) return [];
     const copy = [...results];
@@ -335,6 +362,13 @@ export default function FindPetScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Achou alguns, mas nenhum é o pet buscado → oferece cadastrar com a mesma foto */}
+        {results && results.length > 0 && feedbackSent && (
+          <View style={styles.emptyBox}>
+            {renderRegisterCtas()}
+          </View>
+        )}
+
         {results && results.length === 0 && (
           <View style={styles.emptyBox}>
             <Ionicons name="search" size={44} color="#DFE4EA" />
@@ -343,26 +377,7 @@ export default function FindPetScreen() {
             </Text>
 
             <View style={styles.emptyDivider} />
-            <Text style={styles.emptyCtaTitle}>Quer ajudar este pet?</Text>
-            <Text style={styles.emptyCtaSub}>
-              Cadastre um alerta com esta mesma foto para que o tutor possa encontrá-lo.
-            </Text>
-            <TouchableOpacity
-              style={[styles.emptyCtaBtn, { backgroundColor: '#F79F1F' }]}
-              activeOpacity={0.9}
-              onPress={() => registerAs('sighted')}
-            >
-              <Ionicons name="eye" size={20} color="#FFF" />
-              <Text style={styles.emptyCtaBtnText}>Cadastrar pet visto</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.emptyCtaBtn, { backgroundColor: '#20BF6B' }]}
-              activeOpacity={0.9}
-              onPress={() => registerAs('rescued')}
-            >
-              <Ionicons name="heart" size={20} color="#FFF" />
-              <Text style={styles.emptyCtaBtnText}>Cadastrar pet resgatado</Text>
-            </TouchableOpacity>
+            {renderRegisterCtas()}
           </View>
         )}
       </ScrollView>
