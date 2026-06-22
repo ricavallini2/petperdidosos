@@ -17,6 +17,7 @@ import { createPetReport, getFeeRate, PetSize, PetSex, PetAgeGroup, PetType, Pet
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../services/supabase';
+import { prepareForUpload } from '../../services/upload';
 import { toast, showConfirm, showActionSheet } from '../../components/Feedback';
 
 const SPECIES_OPTIONS: { value: PetSpecies; label: string }[] = [
@@ -178,16 +179,18 @@ export default function ReportScreen() {
 
   // Pré-carrega a localização atual pra usar como ponto inicial do mapa
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
+        if (status !== 'granted' || !alive) return;
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        if (alive) setUserLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
       } catch (e) {
         // silencioso — fallback no mapa será São Paulo
       }
     })();
+    return () => { alive = false; };
   }, []);
 
   // Flags por tipo
@@ -260,7 +263,7 @@ export default function ReportScreen() {
       quality: 0.7,
     });
     if (result.canceled || !result.assets?.length) return;
-    applyPicked(slot, result.assets[0].uri);
+    applyPicked(slot, await prepareForUpload(result.assets[0].uri));
   };
 
   const launchCamera = async (slot: 'main' | number) => {
@@ -276,7 +279,7 @@ export default function ReportScreen() {
       quality: 0.7,
     });
     if (result.canceled || !result.assets?.length) return;
-    applyPicked(slot, result.assets[0].uri);
+    applyPicked(slot, await prepareForUpload(result.assets[0].uri));
   };
 
   const pickImage = (slot: 'main' | number) => {
@@ -345,7 +348,27 @@ export default function ReportScreen() {
       }
       let finalLat: number, finalLng: number;
       if (locationMode === 'gps') {
-        const loc = await Location.getCurrentPositionAsync({});
+        let loc: Location.LocationObject | null;
+        if (Platform.OS === 'ios') {
+          // iOS: accuracy reduzida + timeout 8s + fallback p/ a última posição —
+          // evita o "Publicando..." travado quando o GPS demora (local fechado).
+          // Isolado em iOS para NÃO alterar o comportamento do Android.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          loc = await Promise.race<Location.LocationObject | null>([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(null), 8000); }),
+          ]).catch(() => null);
+          if (timer) clearTimeout(timer);
+          if (!loc) loc = await Location.getLastKnownPositionAsync();
+          if (!loc) {
+            toast.warning('Não consegui sua localização agora. Toque em "Marcar no Mapa" para escolher o local.');
+            setIsSubmitting(false);
+            return;
+          }
+        } else {
+          // Android: comportamento original inalterado.
+          loc = await Location.getCurrentPositionAsync({});
+        }
         finalLat = loc.coords.latitude;
         finalLng = loc.coords.longitude;
       } else {

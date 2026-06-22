@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import { prepareForUpload } from '../services/upload';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
@@ -69,7 +70,9 @@ export default function FindPetScreen() {
       ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
     if (result.canceled || !result.assets?.length) return;
-    const uri = result.assets[0].uri;
+    // Redimensiona antes de usar (preview + upload): a foto full-res em base64 dava
+    // o mesmo pico de memória do cadastro e deixava a busca por IA lenta no iOS.
+    const uri = await prepareForUpload(result.assets[0].uri);
     setResults(null);
     setPhotoUri(uri);
   };

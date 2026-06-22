@@ -147,6 +147,54 @@ function formatElapsedMask(iso?: string | null): string | null {
 // Chave de cache do ícone de buscador: cor do pin + se é premium
 const searcherIconKey = (color: string, premium: boolean) => `${color}|${premium ? 'p' : 'r'}`;
 
+// Markers de pet/cluster com tracksViewChanges que ASSENTA em false após a imagem
+// carregar. Markers de imagem (image={{uri}}) com tracking permanente re-rasterizam
+// a cada frame no iOS — principal causa de lentidão do mapa. Mantemos o tracking
+// ligado ~700ms (e reativamos só quando o ícone/seleção muda — re-render por callback
+// NÃO reseta, pois a effect depende de [icon,isActive]) para a imagem assentar, e
+// depois desligamos. Visual idêntico no Android (que rasteriza uma vez de qualquer forma).
+const PetSingleMarker = React.memo(function PetSingleMarker({
+  latitude, longitude, isActive, icon, onPress,
+}: { latitude: number; longitude: number; isActive: boolean; icon?: string; onPress: () => void }) {
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => {
+    setTracks(true);
+    const t = setTimeout(() => setTracks(false), 700);
+    return () => clearTimeout(t);
+  }, [icon, isActive]);
+  return (
+    <Marker
+      coordinate={{ latitude, longitude }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      image={icon ? { uri: icon } : undefined}
+      pinColor={icon ? undefined : '#FF4757'}
+      zIndex={isActive ? 999 : 1}
+      tracksViewChanges={tracks}
+      onPress={(e) => { e.stopPropagation(); onPress(); }}
+    />
+  );
+});
+
+const ClusterMarker = React.memo(function ClusterMarker({
+  latitude, longitude, icon, onPress,
+}: { latitude: number; longitude: number; icon?: string; onPress: () => void }) {
+  const [tracks, setTracks] = useState(true);
+  useEffect(() => {
+    setTracks(true);
+    const t = setTimeout(() => setTracks(false), 700);
+    return () => clearTimeout(t);
+  }, [icon]);
+  return (
+    <Marker
+      coordinate={{ latitude, longitude }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      image={icon ? { uri: icon } : undefined}
+      tracksViewChanges={tracks}
+      onPress={(e) => { e.stopPropagation(); onPress(); }}
+    />
+  );
+});
+
 export default function MapScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1095,26 +1143,22 @@ export default function MapScreen() {
         )}
 
         {/* Clusters — grupo de pets próximos quando o mapa está afastado */}
-        {clusteredPets.clusters.map((cluster) => {
-          const icon = clusterIcons[cluster.count];
-          return (
-            <Marker
-              key={`cluster-${cluster.id}`}
-              coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}
-              anchor={{ x: 0.5, y: 0.5 }}
-              image={icon ? { uri: icon } : undefined}
-              onPress={(e) => {
-                e.stopPropagation();
-                mapRef.current?.animateToRegion({
-                  latitude: cluster.latitude,
-                  longitude: cluster.longitude,
-                  latitudeDelta: (currentRegion?.latitudeDelta ?? 0.1) * 0.4,
-                  longitudeDelta: (currentRegion?.longitudeDelta ?? 0.1) * 0.4,
-                }, 400);
-              }}
-            />
-          );
-        })}
+        {clusteredPets.clusters.map((cluster) => (
+          <ClusterMarker
+            key={`cluster-${cluster.id}`}
+            latitude={cluster.latitude}
+            longitude={cluster.longitude}
+            icon={clusterIcons[cluster.count]}
+            onPress={() => {
+              mapRef.current?.animateToRegion({
+                latitude: cluster.latitude,
+                longitude: cluster.longitude,
+                latitudeDelta: (currentRegion?.latitudeDelta ?? 0.1) * 0.4,
+                longitudeDelta: (currentRegion?.longitudeDelta ?? 0.1) * 0.4,
+              }, 400);
+            }}
+          />
+        ))}
 
         {clusteredPets.singles.map((pet) => {
           const lat = Number(pet.latitude);
@@ -1124,17 +1168,13 @@ export default function MapScreen() {
           const ic = markerIcons[pet.id];
           const icon = isActive ? (ic?.large ?? ic?.small) : (ic?.small ?? ic?.large);
           return (
-            <Marker
+            <PetSingleMarker
               key={pet.id}
-              coordinate={{ latitude: lat, longitude: lng }}
-              anchor={{ x: 0.5, y: 0.5 }}
-              image={icon ? { uri: icon } : undefined}
-              pinColor={icon ? undefined : '#FF4757'}
-              zIndex={isActive ? 999 : 1}
-              onPress={(e) => {
-                e.stopPropagation();
-                handlePetPress(pet);
-              }}
+              latitude={lat}
+              longitude={lng}
+              isActive={isActive}
+              icon={icon}
+              onPress={() => handlePetPress(pet)}
             />
           );
         })}

@@ -15,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../services/supabase';
+import { prepareForUpload } from '../../../services/upload';
 import { getFeeRate, getPetDetails, updatePet, increaseReward, PetSize, PetSex, PetAgeGroup, PetType } from '../../../services/api';
 import { toast } from '../../../components/Feedback';
 
@@ -167,7 +168,7 @@ export default function EditPetScreen() {
       quality: 0.7,
     });
     if (result.canceled || !result.assets?.length) return;
-    const uri = result.assets[0].uri;
+    const uri = await prepareForUpload(result.assets[0].uri);
     if (slot === 'main') setMainPhoto(uri);
     else {
       const copy = [...extraPhotos];
