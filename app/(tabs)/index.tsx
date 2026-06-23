@@ -200,6 +200,9 @@ export default function MapScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedPet, setSelectedPet] = useState<PetSighting | null>(null);
   const [cardOpen, setCardOpen] = useState(false);
+  // Galeria do card do mapa (foto principal + extras) com carrossel deslizável.
+  const [cardGallery, setCardGallery] = useState<string[]>([]);
+  const [cardGalleryIndex, setCardGalleryIndex] = useState(0);
   const [pets, setPets] = useState<PetSighting[]>([]);
   // Filtro por tipo (legenda interativa no mapa).
   const [typeFilter, setTypeFilter] = useState<{ lost: boolean; sighted: boolean; rescued: boolean; donation: boolean }>({ lost: true, sighted: true, rescued: true, donation: true });
@@ -259,6 +262,7 @@ export default function MapScreen() {
   const HERO_DEFAULT = 168;
   const HERO_MIN = 100;
   const HERO_MAX = 290;
+  const CARD_W = Dimensions.get('window').width - 32; // largura do card (bottomSheet left:16 + right:16) p/ paging do carrossel
   const heroHeight = useRef(new Animated.Value(HERO_DEFAULT)).current;
   const heroHeightCurrent = useRef(HERO_DEFAULT);
 
@@ -654,13 +658,13 @@ export default function MapScreen() {
   }, [pets, speciesFilter, colorFilter]);
 
 
-  // Toque no pet: 1º toque destaca (marcador aumenta); 2º toque abre o card
+  // Toque no pet: abre o card JÁ no 1º toque (marcador também destaca via selectedPet).
   const handlePetPress = (pet: PetSighting) => {
     if (selectedPet?.id === pet.id) {
       setCardOpen(true);
     } else {
       setSelectedPet(pet);
-      setCardOpen(false);
+      setCardOpen(true);
       setTrail([]); // Limpa a trilha do pet anterior imediatamente para evitar fantasmas visuais
       // Nova seleção limpa a rota anterior
       setRouteCoords([]);
@@ -831,9 +835,9 @@ export default function MapScreen() {
 
   useEffect(() => {
     if (cardOpen) {
-      // Resetar altura da foto ao abrir um (novo) pet
-      heroHeightCurrent.current = HERO_DEFAULT;
-      heroHeight.setValue(HERO_DEFAULT);
+      // Abre com a foto já expandida ao máximo (carrossel)
+      heroHeightCurrent.current = HERO_MAX;
+      heroHeight.setValue(HERO_MAX);
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
@@ -848,6 +852,29 @@ export default function MapScreen() {
       }).start();
     }
   }, [cardOpen]);
+
+  // Carrega a galeria do card (foto principal + fotos extras) ao abrir/trocar de pet
+  // e mantém a foto expandida ao máximo. Mostra a principal já, completa com extras.
+  useEffect(() => {
+    if (!cardOpen || !selectedPet) return;
+    heroHeightCurrent.current = HERO_MAX;
+    heroHeight.setValue(HERO_MAX);
+    setCardGalleryIndex(0);
+    setCardGallery(selectedPet.photo_url ? [selectedPet.photo_url] : []);
+    let cancelled = false;
+    getPetDetails(selectedPet.id)
+      .then((d: any) => {
+        if (cancelled || !d) return;
+        const extras = (d.pet_photos ?? [])
+          .slice()
+          .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))
+          .map((p: any) => p.photo_url);
+        const g = [d.main_photo_url ?? selectedPet.photo_url, ...extras].filter(Boolean);
+        if (g.length) setCardGallery(g);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [cardOpen, selectedPet?.id]);
 
   // ---- Raio de busca ao redor do pet ----------------------------------
   // Cancela o raio só ao trocar para OUTRO pet. Fechar o card mantém o raio
@@ -1746,21 +1773,46 @@ export default function MapScreen() {
           <>
             {/* Hero: foto full-width com gradiente e info sobreposta */}
             <Animated.View style={[styles.sheetHero, { height: heroHeight }]}>
-              <Image
-                source={{ uri: selectedPet.photo_url || 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400' }}
-                style={StyleSheet.absoluteFillObject}
-                resizeMode="cover"
-              />
+              {cardGallery.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  scrollEnabled={cardGallery.length > 1}
+                  style={StyleSheet.absoluteFillObject}
+                  onMomentumScrollEnd={(e) => setCardGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / CARD_W))}
+                >
+                  {cardGallery.map((uri, i) => (
+                    <Image key={i} source={{ uri }} style={{ width: CARD_W, height: '100%' }} resizeMode="cover" />
+                  ))}
+                </ScrollView>
+              ) : (
+                <Image
+                  source={{ uri: selectedPet.photo_url || 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400' }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="cover"
+                />
+              )}
               <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.78)']}
                 style={styles.sheetHeroGradient}
+                pointerEvents="none"
               />
               {/* Barrinha de arrasto — arraste ↑ para expandir a foto, ↓ para comprimir */}
               <View style={styles.sheetIndicatorWrap} {...heroPanResponder.panHandlers}>
                 <View style={styles.sheetIndicatorPill} />
               </View>
+              {/* Contador de fotos (carrossel) */}
+              {cardGallery.length > 1 && (
+                <View pointerEvents="none" style={styles.heroPhotoCounter}>
+                  <View style={styles.heroPhotoCounterPill}>
+                    <Ionicons name="images" size={11} color="#FFF" />
+                    <Text style={styles.heroPhotoCounterText}>{cardGalleryIndex + 1}/{cardGallery.length}</Text>
+                  </View>
+                </View>
+              )}
               {/* Badge de tipo (topo esquerdo): PET PERDIDO / VISTO / RESGATADO */}
-              <View style={[styles.sightingHeroBadge, { backgroundColor: ringColorForPet(selectedPet) }]}>
+              <View pointerEvents="none" style={[styles.sightingHeroBadge, { backgroundColor: ringColorForPet(selectedPet) }]}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' }} />
                 <Text style={styles.sightingHeroBadgeText}>PET {petTypeLabel(selectedPet).toUpperCase()}</Text>
               </View>
@@ -1772,7 +1824,7 @@ export default function MapScreen() {
                 <Ionicons name="close" size={16} color="#2F3542" />
               </TouchableOpacity>
               {/* Nome + recompensa na base da foto */}
-              <View style={styles.sheetHeroInfo}>
+              <View pointerEvents="none" style={styles.sheetHeroInfo}>
                 <Text style={styles.sheetHeroName} numberOfLines={1}>{selectedPet.name}</Text>
                 {selectedPet.reward && selectedPet.reward.amount > 0 && (
                   <View style={styles.sheetHeroReward}>
@@ -3608,6 +3660,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: 'rgba(255,255,255,0.75)',
   },
+  heroPhotoCounter: { position: 'absolute', top: 42, left: 0, right: 0, alignItems: 'center' },
+  heroPhotoCounterPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 11,
+  },
+  heroPhotoCounterText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
   sheetCloseBtnTop: {
     position: 'absolute',
     top: 10,
