@@ -111,6 +111,7 @@ export default function ReportScreen() {
   const mapRef = useRef<MapView>(null);
   const [addressQuery, setAddressQuery] = useState('');
   const [searchingAddress, setSearchingAddress] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   // Monta o MapView só depois que o modal abre (evita mapa em branco no Android,
   // quando a superfície inicializa com tamanho zero durante a animação).
   const [mapPickerReady, setMapPickerReady] = useState(false);
@@ -138,6 +139,7 @@ export default function ReportScreen() {
   const closeMapPicker = () => {
     setShowMapPicker(false);
     setMapPickerReady(false);
+    setSearchError(null);
   };
 
   // Busca por CEP ou endereço e move o mapa para o ponto encontrado.
@@ -146,6 +148,7 @@ export default function ReportScreen() {
     const raw = addressQuery.trim();
     if (!raw || searchingAddress) return;
     setSearchingAddress(true);
+    setSearchError(null);
     try {
       Keyboard.dismiss();
       let query = raw;
@@ -159,7 +162,8 @@ export default function ReportScreen() {
             .filter(Boolean)
             .join(', ');
         } else {
-          toast.error('CEP não encontrado. Tente o endereço.', 'CEP inválido');
+          // Erro inline (o toast ficaria atrás do Modal do mapa no iOS).
+          setSearchError('CEP não encontrado. Tente o endereço.');
           setSearchingAddress(false);
           return;
         }
@@ -168,10 +172,10 @@ export default function ReportScreen() {
       if (results && results.length > 0) {
         focusMapOn(results[0].latitude, results[0].longitude);
       } else {
-        toast.error('Não localizamos esse endereço. Tente ser mais específico.', 'Endereço não encontrado');
+        setSearchError('Não localizamos esse endereço. Tente ser mais específico.');
       }
     } catch {
-      toast.error('Falha ao buscar o endereço. Verifique sua conexão.', 'Erro na busca');
+      setSearchError('Falha ao buscar o endereço. Verifique sua conexão.');
     } finally {
       setSearchingAddress(false);
     }
@@ -416,18 +420,24 @@ export default function ReportScreen() {
         consent_searched_owner: mode === 'donation' ? consentSearchedOwner : undefined,
       });
 
-      toast.success(
-        isLost
-          ? (rewardEnabled
-              ? `Recompensa de R$ ${rewardValue.toFixed(2)} + taxa R$ ${fee.toFixed(2)} reservada (pagamento pendente — MVP).`
-              : 'Seu pet já aparece no mapa.')
-          : (mode === 'sighted'
-              ? 'Pet visto publicado no mapa.'
-              : mode === 'rescued'
-                ? 'Pet resgatado publicado no mapa.'
-                : 'Pet para doação publicado no mapa.'),
-        isLost ? 'Alerta criado!' : 'Publicado!',
-      );
+      // Para visto/resgatado vamos abrir o confirm de "Reconhecimento facial" logo
+      // abaixo — não mostrar também o toast (evita empilhar dois feedbacks; o confirm
+      // já comunica o sucesso). O toast volta nos demais casos.
+      const willOfferMatch = (submittedMode === 'sighted' || submittedMode === 'rescued') && !!created?.id;
+      if (!willOfferMatch) {
+        toast.success(
+          isLost
+            ? (rewardEnabled
+                ? `Recompensa de R$ ${rewardValue.toFixed(2)} + taxa R$ ${fee.toFixed(2)} reservada (pagamento pendente — MVP).`
+                : 'Seu pet já aparece no mapa.')
+            : (mode === 'sighted'
+                ? 'Pet visto publicado no mapa.'
+                : mode === 'rescued'
+                  ? 'Pet resgatado publicado no mapa.'
+                  : 'Pet para doação publicado no mapa.'),
+          isLost ? 'Alerta criado!' : 'Publicado!',
+        );
+      }
 
       // Reset
       setName(''); setBreed(''); setColor(''); setSize(null); setSex('desconhecido'); setAgeGroup('desconhecido');
@@ -534,7 +544,7 @@ export default function ReportScreen() {
               placeholder="Buscar por CEP ou endereço"
               placeholderTextColor="#A4B0BE"
               value={addressQuery}
-              onChangeText={setAddressQuery}
+              onChangeText={(t) => { setAddressQuery(t); if (searchError) setSearchError(null); }}
               returnKeyType="search"
               onSubmitEditing={handleSearchAddress}
             />
@@ -548,6 +558,14 @@ export default function ReportScreen() {
                 : <Ionicons name="arrow-forward" size={18} color="#FFF" />}
             </TouchableOpacity>
           </View>
+
+          {/* Erro da busca (inline — o toast ficaria escondido atrás deste Modal no iOS) */}
+          {!!searchError && (
+            <View style={styles.mapSearchError} pointerEvents="none">
+              <Ionicons name="alert-circle" size={15} color="#FFF" />
+              <Text style={styles.mapSearchErrorText}>{searchError}</Text>
+            </View>
+          )}
 
           <View style={styles.mapModalFooter}>
             <TouchableOpacity style={styles.mapConfirmBtn} onPress={closeMapPicker}>
@@ -1122,6 +1140,13 @@ const styles = StyleSheet.create({
   },
   mapSearchInput: { flex: 1, fontSize: 15, color: '#2F3542', fontWeight: '500', paddingVertical: 0 },
   mapSearchBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FF4757', justifyContent: 'center', alignItems: 'center' },
+  mapSearchError: {
+    position: 'absolute', top: 178, left: 20, right: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: '#FF4757', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 4,
+  },
+  mapSearchErrorText: { color: '#FFF', fontSize: 13, fontWeight: '700', flexShrink: 1 },
   mapModalFooter: { position: 'absolute', bottom: 40, left: 20, right: 20 },
   mapConfirmBtn: { backgroundColor: '#FF4757', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   mapConfirmBtnText: { color: '#FFF', fontSize: 18, fontWeight: '800' },

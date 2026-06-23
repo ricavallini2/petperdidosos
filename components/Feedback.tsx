@@ -10,7 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Modal, StyleSheet, Text, TouchableOpacity, View,
+  Animated, Modal, Platform, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -126,16 +126,41 @@ export function FeedbackHost() {
     return () => { _showToast = null; _showConfirm = null; _showActionSheet = null; };
   }, [showToast]);
 
+  // Ação a rodar DEPOIS que o Modal nativo fechar de fato. No iOS, navegar
+  // (router.push) enquanto o Modal ainda anima o dismiss deixa o container do
+  // Modal órfão capturando todos os toques (tela "travada", só fechar o app).
+  // Por isso, no iOS a ação roda no onDismiss do Modal (com fallback por timeout);
+  // no Android, que fecha o Modal de forma síncrona, mantemos o atual (60ms).
+  const pendingRun = useRef<(() => void) | null>(null);
+  const runPending = useCallback(() => {
+    const fn = pendingRun.current;
+    pendingRun.current = null;
+    // Roda no PRÓXIMO tick: tira a ação (navegação OU reabrir outro showConfirm) de
+    // dentro do ciclo de dismiss do Modal nativo — evita reapresentar/navegar durante
+    // o dismiss (a mesma classe do freeze), inclusive no caso de confirm aninhado.
+    if (fn) setTimeout(fn, 0);
+  }, []);
+
   const closeConfirm = (run?: () => void) => {
-    setConfirmData(null);
-    // pequeno atraso garante que o modal fechou antes de uma ação que possa
-    // abrir outro feedback (ex.: onConfirm dispara um toast)
-    if (run) setTimeout(run, 60);
+    if (Platform.OS === 'ios') {
+      pendingRun.current = run ?? null;
+      setConfirmData(null);
+      if (run) setTimeout(runPending, 450); // fallback caso onDismiss não dispare
+    } else {
+      setConfirmData(null);
+      if (run) setTimeout(run, 60);
+    }
   };
 
   const closeSheet = (run?: () => void) => {
-    setSheetData(null);
-    if (run) setTimeout(run, 60);
+    if (Platform.OS === 'ios') {
+      pendingRun.current = run ?? null;
+      setSheetData(null);
+      if (run) setTimeout(runPending, 450);
+    } else {
+      setSheetData(null);
+      if (run) setTimeout(run, 60);
+    }
   };
 
   const meta = toastData ? META[toastData.type] : null;
@@ -143,47 +168,44 @@ export function FeedbackHost() {
 
   return (
     <>
-      {/* ---- Toast (em Modal próprio p/ ficar acima de qualquer tela) ---- */}
-      <Modal
-        visible={!!toastData}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={hideToast}
-      >
-        <View style={[styles.toastRoot, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
-          {toastData && meta && (
-            <Animated.View
-              style={[
-                styles.toast,
-                { opacity: toastOpacity, transform: [{ translateY: toastY }] },
-              ]}
+      {/* ---- Toast: overlay absoluto (SEM Modal) p/ não criar uma 2ª camada de
+           apresentação nativa que ficaria órfã ao navegar e travaria o iOS.
+           box-none deixa os toques passarem; só o toast em si é tocável. ---- */}
+      {toastData && meta && (
+        <View
+          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, styles.toastRoot, { paddingTop: insets.top + 10 }]}
+        >
+          <Animated.View
+            style={[
+              styles.toast,
+              { opacity: toastOpacity, transform: [{ translateY: toastY }] },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={hideToast}
+              style={styles.toastInner}
             >
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={hideToast}
-                style={styles.toastInner}
-              >
-                <View style={[styles.toastIcon, { backgroundColor: meta.bg }]}>
-                  <Ionicons name={meta.icon} size={22} color={meta.color} />
-                </View>
-                <View style={styles.toastTextWrap}>
-                  {!!toastData.title && (
-                    <Text style={styles.toastTitle} numberOfLines={1}>{toastData.title}</Text>
-                  )}
-                  <Text
-                    style={[styles.toastMessage, !toastData.title && styles.toastMessageSolo]}
-                    numberOfLines={4}
-                  >
-                    {toastData.message}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              <View style={[styles.toastAccent, { backgroundColor: meta.color }]} />
-            </Animated.View>
-          )}
+              <View style={[styles.toastIcon, { backgroundColor: meta.bg }]}>
+                <Ionicons name={meta.icon} size={22} color={meta.color} />
+              </View>
+              <View style={styles.toastTextWrap}>
+                {!!toastData.title && (
+                  <Text style={styles.toastTitle} numberOfLines={1}>{toastData.title}</Text>
+                )}
+                <Text
+                  style={[styles.toastMessage, !toastData.title && styles.toastMessageSolo]}
+                  numberOfLines={4}
+                >
+                  {toastData.message}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <View style={[styles.toastAccent, { backgroundColor: meta.color }]} />
+          </Animated.View>
         </View>
-      </Modal>
+      )}
 
       {/* ---- Confirmação ---- */}
       <Modal
@@ -191,6 +213,7 @@ export function FeedbackHost() {
         transparent
         animationType="fade"
         statusBarTranslucent
+        onDismiss={Platform.OS === 'ios' ? runPending : undefined}
         onRequestClose={() => closeConfirm(confirmData?.onCancel)}
       >
         {confirmData && cMeta && (
@@ -238,6 +261,7 @@ export function FeedbackHost() {
         transparent
         animationType="fade"
         statusBarTranslucent
+        onDismiss={Platform.OS === 'ios' ? runPending : undefined}
         onRequestClose={() => closeSheet(sheetData?.onCancel)}
       >
         {sheetData && (
@@ -307,7 +331,6 @@ export function FeedbackHost() {
 const styles = StyleSheet.create({
   // ---- Toast ----
   toastRoot: {
-    flex: 1,
     paddingHorizontal: 14,
     alignItems: 'center',
   },
