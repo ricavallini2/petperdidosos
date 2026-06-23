@@ -6,9 +6,12 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import './index.css';
 
+// basename = base do Vite (sem a barra final): '/admin' em produção, '' no dev.
+const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <ThemeProvider>
         <AuthProvider>
           <App />
