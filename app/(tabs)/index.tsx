@@ -1783,7 +1783,7 @@ export default function MapScreen() {
                   onMomentumScrollEnd={(e) => setCardGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / CARD_W))}
                 >
                   {cardGallery.map((uri, i) => (
-                    <Image key={i} source={{ uri }} style={{ width: CARD_W, height: '100%' }} resizeMode="cover" />
+                    <Image key={i} source={{ uri }} style={{ width: CARD_W, height: HERO_MAX }} resizeMode="cover" />
                   ))}
                 </ScrollView>
               ) : (
@@ -1862,7 +1862,15 @@ export default function MapScreen() {
                         <View style={[styles.sightingInfoIcon, { backgroundColor: tBg }]}><Ionicons name="navigate-outline" size={15} color={tColor} /></View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.sightingInfoLabel}>Distância</Text>
-                          <Text style={styles.sightingInfoValue}>{`${formatDistance(selectedPet.distance)} de você`}</Text>
+                          <Text style={styles.sightingInfoValue}>{(() => {
+                            // Calcula ao vivo a partir da localização do aparelho (o
+                            // selectedPet.distance às vezes vem null); cai pro pré-calculado.
+                            const m = location && Number.isFinite(Number(selectedPet.latitude)) && Number.isFinite(Number(selectedPet.longitude))
+                              ? distMeters(location.coords.latitude, location.coords.longitude, Number(selectedPet.latitude), Number(selectedPet.longitude))
+                              : selectedPet.distance;
+                            const t = formatDistance(m);
+                            return t ? `${t} de você` : 'Localização indisponível';
+                          })()}</Text>
                         </View>
                       </View>
                       <View style={[styles.sightingInfoLine, styles.sightingInfoLineLast]}>
