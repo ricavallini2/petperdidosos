@@ -260,6 +260,7 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionTitle}>Minha Conta</Text>
         <View style={styles.menuContainer}>
+          <MenuOption icon="heart-circle-outline" title="Pets para adoção" iconColor="#3B82F6" onPress={() => router.push('/doacao')} />
           <MenuOption icon="person-outline" title="Editar Perfil" iconColor="#FF4757" onPress={() => router.push('/profile/edit')} />
           <MenuOption icon="notifications-outline" title="Notificações" iconColor="#FF4757" onPress={() => router.push('/profile/notifications')} hasBadge />
           <MenuOption icon="wallet-outline" title="Carteira e Saques" iconColor="#FF4757" onPress={() => router.push('/profile/wallet')} />

@@ -43,39 +43,13 @@ export default function TabLayout() {
           marginBottom: 6,
         }
       }}>
+      {/* Ordem da barra: SOS · Chats · Alertar(centro) · Meus Pets · Perfil */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Mapa SOS',
+          title: 'SOS',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "map" : "map-outline"} size={26} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="alertas"
-        options={{
-          title: 'Alertas',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "list" : "list-outline"} size={26} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="report"
-        options={{
-          title: 'Novo alerta',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "megaphone" : "megaphone-outline"} size={26} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="doacao"
-        options={{
-          title: 'Doação',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "heart-circle" : "heart-circle-outline"} size={28} color={color} />
+            <Ionicons name={focused ? "navigate-circle" : "navigate-circle-outline"} size={27} color={color} />
           ),
         }}
       />
@@ -89,6 +63,24 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="report"
+        options={{
+          title: 'Alertar',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "megaphone" : "megaphone-outline"} size={26} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="meus-pets"
+        options={{
+          title: 'Meus Pets',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "paw" : "paw-outline"} size={26} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',
@@ -97,6 +89,11 @@ export default function TabLayout() {
           ),
         }}
       />
+
+      {/* Rotas acessadas por push (fora da barra): Lista de alertas e Doação.
+          Continuam existindo, só não ocupam slot no menu inferior. */}
+      <Tabs.Screen name="alertas" options={{ href: null }} />
+      <Tabs.Screen name="doacao" options={{ href: null }} />
     </Tabs>
   );
 }

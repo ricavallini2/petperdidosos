@@ -1465,6 +1465,19 @@ export default function MapScreen() {
           <Ionicons name="options-outline" size={20} color="#2F3542" />
         </TouchableOpacity>
 
+        {/* Atalhos do SOS: ver em Lista e ir para Adoção (saíram da barra inferior) */}
+        <View style={styles.sosQuickRow}>
+          <TouchableOpacity style={styles.sosQuickBtn} activeOpacity={0.85} onPress={() => router.push('/alertas')}>
+            <Ionicons name="list" size={16} color="#FF4757" />
+            <Text style={styles.sosQuickText}>Ver em lista</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.sosQuickBtn, styles.sosQuickAdocao]} activeOpacity={0.85} onPress={() => router.push('/doacao')}>
+            <Ionicons name="heart" size={15} color="#3B82F6" />
+            <Text style={[styles.sosQuickText, { color: '#3B82F6' }]}>Adoção</Text>
+            <Ionicons name="chevron-forward" size={13} color="#3B82F6" />
+          </TouchableOpacity>
+        </View>
+
         {/* Legenda interativa = filtro por tipo (toque para mostrar/ocultar) */}
         <View style={styles.legendBar}>
           <ScrollView
@@ -3419,6 +3432,14 @@ const styles = StyleSheet.create({
   },
   // Barra de filtros: linha única com rolagem horizontal (nunca quebra).
   // Legenda = chips brancos flutuantes (sem caixa de fundo, harmoniza com o mapa).
+  sosQuickRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 10 },
+  sosQuickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#FFF', paddingLeft: 12, paddingRight: 14, paddingVertical: 8, borderRadius: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+  },
+  sosQuickAdocao: { paddingRight: 8, backgroundColor: '#EFF6FF' },
+  sosQuickText: { fontSize: 13, fontWeight: '800', color: '#FF4757' },
   legendBar: { width: '94%', marginTop: 10, alignSelf: 'center', backgroundColor: 'transparent' },
   // Centraliza os chips quando cabem; rola quando passam da largura.
   legendScrollContent: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 4, paddingVertical: 2 },
