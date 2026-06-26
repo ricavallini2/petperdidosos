@@ -1028,3 +1028,167 @@ export async function getTicketDetail(
   return res.json();
 }
 
+// ============================================================================
+// MEUS PETS — ficha do dono + carteirinha de saúde (privado)
+// ============================================================================
+// O backend deriva a identidade do JWT (não precisa userId na rota).
+
+export type HealthRecordType = 'vacina' | 'vermifugo' | 'antipulgas' | 'medicacao' | 'peso';
+
+export interface MyPet {
+  id: string;
+  name: string;
+  species: PetSpecies | null;
+  breed: string | null;
+  color: string | null;
+  size: PetSize | null;
+  sex: PetSex | null;
+  birth_date: string | null; // 'YYYY-MM-DD'
+  microchip: string | null;
+  neutered: boolean;
+  health_notes: string | null;
+  main_photo_url: string | null;
+  extra_photos: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthRecord {
+  id: string;
+  pet_id: string;
+  type: HealthRecordType;
+  name: string | null;
+  date_aplicada: string | null;
+  proxima_data: string | null;
+  vet: string | null;
+  lote: string | null;
+  weight_kg: number | null;
+  obs: string | null;
+  created_at: string;
+}
+
+export interface MyPetDetail extends MyPet {
+  health_records: HealthRecord[];
+}
+
+export interface CreateMyPetInput {
+  name: string;
+  species?: PetSpecies | null;
+  breed?: string | null;
+  color?: string | null;
+  size?: PetSize | null;
+  sex?: PetSex | null;
+  birth_date?: string | null;
+  microchip?: string | null;
+  neutered?: boolean;
+  health_notes?: string | null;
+  main_photo_url?: string | null;
+  extra_photos?: string[];
+}
+export type UpdateMyPetInput = Partial<CreateMyPetInput>;
+
+export interface HealthRecordInput {
+  type: HealthRecordType;
+  name?: string | null;
+  date_aplicada?: string | null;
+  proxima_data?: string | null;
+  vet?: string | null;
+  lote?: string | null;
+  weight_kg?: number | null;
+  obs?: string | null;
+}
+
+export const fetchMyPets = async (): Promise<MyPet[]> => {
+  const response = await authedFetch(`${API_URL}/me/pets`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const getMyPet = async (petId: string): Promise<MyPetDetail> => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const createMyPet = async (data: CreateMyPetInput): Promise<MyPet> => {
+  const response = await authedFetch(`${API_URL}/me/pets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const updateMyPet = async (petId: string, patch: UpdateMyPetInput) => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const deleteMyPet = async (petId: string) => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const addHealthRecord = async (petId: string, data: HealthRecordInput): Promise<HealthRecord> => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}/health`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const updateHealthRecord = async (
+  petId: string,
+  recordId: string,
+  patch: Partial<HealthRecordInput>,
+) => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}/health/${recordId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const deleteHealthRecord = async (petId: string, recordId: string) => {
+  const response = await authedFetch(`${API_URL}/me/pets/${petId}/health/${recordId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+

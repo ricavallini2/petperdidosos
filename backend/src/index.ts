@@ -3101,6 +3101,276 @@ app.patch(
 );
 
 // ============================================================================
+// MEUS PETS — ficha do dono + carteirinha de saúde (privado, RLS por dono)
+// ============================================================================
+// Identidade SEMPRE via authedId(req); o client service-role bypassa RLS, então
+// cada handler valida user_id em código. Fotos são URLs já hospedadas pelo app.
+// Fase 2 ships UNGATED — nenhum limite de pets aqui ainda.
+
+const MP_SPECIES = ['cachorro', 'gato', 'passaro', 'outro'];
+const MP_SIZES = ['pequeno', 'medio', 'grande'];
+const MP_SEXES = ['macho', 'femea', 'desconhecido'];
+const HEALTH_TYPES = ['vacina', 'vermifugo', 'antipulgas', 'medicacao', 'peso'];
+
+// Converte peso: null quando ausente; número válido (0 < w <= 200) ou INVALID_WEIGHT.
+const INVALID_WEIGHT = Symbol('invalid_weight');
+const parseWeight = (raw: any): number | null | typeof INVALID_WEIGHT => {
+  if (raw === undefined || raw === null || raw === '') return null;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return INVALID_WEIGHT;
+  const w = Number(raw);
+  if (!Number.isFinite(w) || w <= 0 || w > 200) return INVALID_WEIGHT;
+  return w;
+};
+
+// Whitelist + coerção da ficha; só inclui chaves presentes no corpo (patch esparso).
+const buildMeuPetPatch = (body: Record<string, any>): Record<string, unknown> => {
+  const patch: Record<string, unknown> = {};
+  if (body.name !== undefined) patch.name = String(body.name).trim();
+  if (body.species !== undefined) patch.species = MP_SPECIES.includes(body.species) ? body.species : null;
+  if (body.breed !== undefined) patch.breed = body.breed ?? null;
+  if (body.color !== undefined) patch.color = body.color ?? null;
+  if (body.size !== undefined) patch.size = MP_SIZES.includes(body.size) ? body.size : null;
+  if (body.sex !== undefined) patch.sex = MP_SEXES.includes(body.sex) ? body.sex : 'desconhecido';
+  if (body.birth_date !== undefined) patch.birth_date = body.birth_date || null;
+  if (body.microchip !== undefined) patch.microchip = body.microchip ?? null;
+  if (body.neutered !== undefined) patch.neutered = Boolean(body.neutered);
+  if (body.health_notes !== undefined) patch.health_notes = body.health_notes ?? null;
+  if (body.main_photo_url !== undefined) patch.main_photo_url = body.main_photo_url ?? null;
+  if (body.extra_photos !== undefined)
+    patch.extra_photos = Array.isArray(body.extra_photos)
+      ? body.extra_photos.filter((u: any) => typeof u === 'string').slice(0, 3)
+      : [];
+  return patch;
+};
+
+// GET /me/pets — lista os pets do dono autenticado
+app.get(
+  '/me/pets',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { data, error } = await supabase
+      .from('meus_pets')
+      .select(
+        'id, name, species, breed, color, size, sex, birth_date, microchip, neutered, health_notes, main_photo_url, extra_photos, created_at, updated_at'
+      )
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data ?? []);
+  })
+);
+
+// GET /me/pets/:petId — ficha + carteirinha (health_records)
+app.get(
+  '/me/pets/:petId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { data: pet, error } = await supabase
+      .from('meus_pets')
+      .select('*')
+      .eq('id', petId)
+      .eq('user_id', userId) // filtro por dono = checagem de posse
+      .maybeSingle();
+    if (error) throw error;
+    if (!pet) return res.status(404).json({ error: 'Pet não encontrado' });
+
+    const { data: records, error: recErr } = await supabase
+      .from('health_records')
+      .select('*')
+      .eq('pet_id', petId)
+      .order('date_aplicada', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false });
+    if (recErr) throw recErr;
+
+    // numeric do Postgres volta como string — normaliza weight_kg para número.
+    const normalized = (records ?? []).map((r: any) => ({
+      ...r,
+      weight_kg: r.weight_kg == null ? null : Number(r.weight_kg),
+    }));
+    res.json({ ...pet, health_records: normalized });
+  })
+);
+
+// POST /me/pets — cria uma ficha
+app.post(
+  '/me/pets',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const body = req.body ?? {};
+    if (!body.name || !String(body.name).trim()) {
+      return res.status(400).json({ error: 'Informe o nome do pet' });
+    }
+    // TODO Fase 3 gating: getPetsConfig() + count(meus_pets) + 402 quando !isPremium && count >= maxFreePets
+    const patch = buildMeuPetPatch(body);
+    const { data: pet, error } = await supabase
+      .from('meus_pets')
+      .insert({ user_id: userId, ...patch })
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(pet);
+  })
+);
+
+// PATCH /me/pets/:petId — edita a ficha (posse + patch esparso)
+app.patch(
+  '/me/pets/:petId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { data: pet, error: petErr } = await supabase
+      .from('meus_pets')
+      .select('id, user_id')
+      .eq('id', petId)
+      .maybeSingle();
+    if (petErr) throw petErr;
+    if (!pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode editar' });
+
+    if (req.body?.name !== undefined && !String(req.body.name).trim()) {
+      return res.status(400).json({ error: 'Informe o nome do pet' });
+    }
+    const patch = buildMeuPetPatch(req.body ?? {});
+    patch.updated_at = new Date().toISOString();
+    const { error } = await supabase.from('meus_pets').update(patch).eq('id', petId);
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
+// DELETE /me/pets/:petId — exclui (cascade remove health_records)
+app.delete(
+  '/me/pets/:petId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { data: pet, error: petErr } = await supabase
+      .from('meus_pets')
+      .select('id, user_id')
+      .eq('id', petId)
+      .maybeSingle();
+    if (petErr) throw petErr;
+    if (!pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode excluir' });
+    const { error } = await supabase.from('meus_pets').delete().eq('id', petId);
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
+// POST /me/pets/:petId/health — adiciona registro de saúde
+app.post(
+  '/me/pets/:petId/health',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { data: pet, error: petErr } = await supabase
+      .from('meus_pets')
+      .select('id, user_id')
+      .eq('id', petId)
+      .maybeSingle();
+    if (petErr) throw petErr;
+    if (!pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode adicionar registros' });
+
+    const b = req.body ?? {};
+    if (!HEALTH_TYPES.includes(b.type)) return res.status(400).json({ error: 'Tipo de registro inválido' });
+    const weight = parseWeight(b.weight_kg);
+    if (weight === INVALID_WEIGHT) return res.status(400).json({ error: 'Peso inválido' });
+
+    const { data: record, error } = await supabase
+      .from('health_records')
+      .insert({
+        pet_id: petId,
+        user_id: userId,
+        type: b.type,
+        name: b.name ?? null,
+        date_aplicada: b.date_aplicada || null,
+        proxima_data: b.proxima_data || null,
+        vet: b.vet ?? null,
+        lote: b.lote ?? null,
+        weight_kg: weight,
+        obs: b.obs ?? null,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(record);
+  })
+);
+
+// PATCH /me/pets/:petId/health/:recordId — edita um registro
+app.patch(
+  '/me/pets/:petId/health/:recordId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId, recordId } = req.params;
+    const { data: rec, error: recErr } = await supabase
+      .from('health_records')
+      .select('id, user_id, pet_id')
+      .eq('id', recordId)
+      .maybeSingle();
+    if (recErr) throw recErr;
+    if (!rec) return res.status(404).json({ error: 'Registro não encontrado' });
+    if (rec.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode editar' });
+    if (rec.pet_id !== petId) return res.status(404).json({ error: 'Registro não encontrado' });
+
+    const b = req.body ?? {};
+    const patch: Record<string, unknown> = {};
+    if (b.type !== undefined) {
+      if (!HEALTH_TYPES.includes(b.type)) return res.status(400).json({ error: 'Tipo de registro inválido' });
+      patch.type = b.type;
+    }
+    if (b.name !== undefined) patch.name = b.name ?? null;
+    if (b.date_aplicada !== undefined) patch.date_aplicada = b.date_aplicada || null;
+    if (b.proxima_data !== undefined) patch.proxima_data = b.proxima_data || null;
+    if (b.vet !== undefined) patch.vet = b.vet ?? null;
+    if (b.lote !== undefined) patch.lote = b.lote ?? null;
+    if (b.obs !== undefined) patch.obs = b.obs ?? null;
+    if (b.weight_kg !== undefined) {
+      const w = parseWeight(b.weight_kg);
+      if (w === INVALID_WEIGHT) return res.status(400).json({ error: 'Peso inválido' });
+      patch.weight_kg = w;
+    }
+    if (Object.keys(patch).length > 0) {
+      const { error } = await supabase.from('health_records').update(patch).eq('id', recordId);
+      if (error) throw error;
+    }
+    res.json({ success: true });
+  })
+);
+
+// DELETE /me/pets/:petId/health/:recordId — exclui um registro
+app.delete(
+  '/me/pets/:petId/health/:recordId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId, recordId } = req.params;
+    const { data: rec, error: recErr } = await supabase
+      .from('health_records')
+      .select('id, user_id, pet_id')
+      .eq('id', recordId)
+      .maybeSingle();
+    if (recErr) throw recErr;
+    if (!rec) return res.status(404).json({ error: 'Registro não encontrado' });
+    if (rec.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode excluir' });
+    if (rec.pet_id !== petId) return res.status(404).json({ error: 'Registro não encontrado' });
+    const { error } = await supabase.from('health_records').delete().eq('id', recordId);
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
+// ============================================================================
 // RECOMPENSA — aumentar (delta + 10% taxa)
 // ============================================================================
 app.post(

@@ -219,24 +219,53 @@ export default function ReportScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
-  const initParams = useLocalSearchParams<{ initMode?: string; initPhoto?: string; initLat?: string; initLng?: string }>();
+  const initParams = useLocalSearchParams<{
+    initMode?: string; initPhoto?: string; initLat?: string; initLng?: string;
+    initName?: string; initSpecies?: string; initBreed?: string; initColor?: string; initSize?: string; initSex?: string;
+  }>();
 
-  // Pré-preenche o cadastro quando chega da busca por IA ("Encontrei um pet"):
-  // já entra no modo escolhido (visto/resgatado) com a foto da busca e o local.
+  // Pré-preenche o cadastro quando chega da busca por IA ("Encontrei um pet") ou
+  // do atalho "Perdi este pet" (Meus Pets): entra no modo, com foto/dados e local.
   useEffect(() => {
     const m = initParams.initMode;
     if (!m) return;
     if (['lost', 'sighted', 'rescued', 'donation'].includes(m)) setMode(m as PetType);
-    if (initParams.initPhoto) setMainPhoto(String(initParams.initPhoto));
+
+    // Começa de um estado limpo para não herdar texto de um rascunho anterior
+    // (a aba Alertar é persistente). Depois aplica os dados recebidos por params.
+    setName(''); setBreed(''); setColor(''); setSize(null); setSex('desconhecido'); setAgeGroup('desconhecido');
+    setSpecies(null); setBreedUnknown(false); setColorUnknown(false); setSizeUnknown(false);
+    setDescription(''); setExtraInfo(''); setExtraPhotos([null, null, null]);
+    setReward('50'); setRewardEnabled(true);
+
+    setMainPhoto(initParams.initPhoto ? String(initParams.initPhoto) : null);
+    if (initParams.initName) setName(String(initParams.initName));
+    const sp = initParams.initSpecies ? String(initParams.initSpecies) : '';
+    if (['cachorro', 'gato', 'passaro', 'outro'].includes(sp)) setSpecies(sp as PetSpecies);
+    if (initParams.initBreed) setBreed(String(initParams.initBreed));
+    if (initParams.initColor) setColor(String(initParams.initColor));
+    const sz = initParams.initSize ? String(initParams.initSize) : '';
+    if (['pequeno', 'medio', 'grande'].includes(sz)) setSize(sz as PetSize);
+    const sx = initParams.initSex ? String(initParams.initSex) : '';
+    if (['macho', 'femea'].includes(sx)) setSex(sx as PetSex);
+
     const lat = Number(initParams.initLat);
     const lng = Number(initParams.initLng);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       setLocationMode('map');
       setMapLocation({ latitude: lat, longitude: lng });
+    } else {
+      setLocationMode('gps');
+      setMapLocation(null);
     }
     // Limpa para não reaplicar ao voltar/focar de novo.
-    router.setParams({ initMode: '', initPhoto: '', initLat: '', initLng: '' });
-  }, [initParams.initMode, initParams.initPhoto, initParams.initLat, initParams.initLng]);
+    router.setParams({
+      initMode: '', initPhoto: '', initLat: '', initLng: '',
+      initName: '', initSpecies: '', initBreed: '', initColor: '', initSize: '', initSex: '',
+    });
+  }, [initParams.initMode, initParams.initPhoto, initParams.initLat, initParams.initLng,
+      initParams.initName, initParams.initSpecies, initParams.initBreed, initParams.initColor,
+      initParams.initSize, initParams.initSex]);
 
   const rewardValue = Number(reward) || 0;
   const fee = rewardEnabled ? Number((rewardValue * feeRate).toFixed(2)) : 0;

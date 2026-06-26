@@ -92,6 +92,11 @@ export function usePushNotifications() {
       return;
     }
     if (type === 'withdraw') { router.push('/profile/wallet'); return; }
+    // Lembrete de saúde (vacina/vermífugo/medicação...) → carteirinha do pet.
+    if (type === 'health_reminder' && data.meuPetId) {
+      router.push(`/meu-pet/${data.meuPetId}` as Href);
+      return;
+    }
     // Fallback: tela de Notificações.
     router.push('/profile/notifications');
   }, [router]);
