@@ -43,13 +43,13 @@ export default function TabLayout() {
           marginBottom: 6,
         }
       }}>
-      {/* Ordem da barra: SOS · Chats · Alertar(centro) · Meus Pets · Perfil */}
+      {/* Ordem da barra: Mapa · Chats · Alertar(centro) · Meus Pets · Perfil */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'SOS',
+          title: 'Mapa',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "navigate-circle" : "navigate-circle-outline"} size={27} color={color} />
+            <Ionicons name={focused ? "map" : "map-outline"} size={26} color={color} />
           ),
         }}
       />
