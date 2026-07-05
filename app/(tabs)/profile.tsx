@@ -183,7 +183,7 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.statDivider} />
               <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={() => router.push('/profile/wallet')}>
-                <Text style={[styles.statNumber, { color: '#2ED573' }]}>
+                <Text style={[styles.statNumber, { color: '#2ED573' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                   R$ {Number(profileData?.wallet_balance ?? 0).toFixed(2)}
                 </Text>
                 <View style={styles.statLabelRow}>

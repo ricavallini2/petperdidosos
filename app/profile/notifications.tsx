@@ -234,7 +234,7 @@ export default function NotificationsScreen() {
                         </Text>
                         {link && (
                           <View style={styles.tapHint}>
-                            <Text style={[styles.tapHintText, { color: meta.color }]}>{link.label}</Text>
+                            <Text style={[styles.tapHintText, { color: meta.color }]} numberOfLines={1}>{link.label}</Text>
                             <Ionicons name="chevron-forward" size={12} color={meta.color} />
                           </View>
                         )}
@@ -294,9 +294,9 @@ const styles = StyleSheet.create({
   contextStrong: { color: '#FF4757', fontWeight: '800' },
   body: { fontSize: 13, color: '#747D8C', lineHeight: 19, marginTop: 3 },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 7 },
-  time: { fontSize: 11, color: '#A4B0BE', fontWeight: '500' },
-  tapHint: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  tapHintText: { fontSize: 12, fontWeight: '800' },
+  time: { fontSize: 11, color: '#A4B0BE', fontWeight: '500', flexShrink: 0, marginRight: 8 },
+  tapHint: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 1, minWidth: 0 },
+  tapHintText: { fontSize: 12, fontWeight: '800', flexShrink: 1 },
 
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 50 },
   emptyIcon: {
