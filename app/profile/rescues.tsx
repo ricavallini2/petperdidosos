@@ -77,13 +77,11 @@ export default function RescuesScreen() {
               <View style={styles.trophyCircle}>
                 <Ionicons name="trophy" size={28} color="#FFF" />
               </View>
-              <Text style={styles.totalLabel}>Total ganho em resgates</Text>
-              <Text style={styles.totalValue}>R$ {totalEarned.toFixed(2)}</Text>
+              <Text style={styles.totalLabel}>Pets que você ajudou a reencontrar</Text>
+              <Text style={styles.totalValue}>{rescues.length}</Text>
               <View style={styles.totalFooter}>
                 <Ionicons name="paw" size={15} color="#FFF" />
-                <Text style={styles.totalFooterText}>
-                  {rescues.length} {rescues.length === 1 ? 'pet resgatado' : 'pets resgatados'}
-                </Text>
+                <Text style={styles.totalFooterText}>Cada reencontro faz a diferença 💚</Text>
               </View>
             </LinearGradient>
 

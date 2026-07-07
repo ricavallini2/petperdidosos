@@ -170,7 +170,7 @@ export default function PetCaseScreen() {
                 <View style={styles.rewardRow}>
                   <View>
                     <Text style={styles.rewardLabel}>
-                      {rewardPaid ? 'Valor pago ao herói' : rewardRefunded ? 'Valor reembolsado' : 'Valor da recompensa'}
+                      {rewardRefunded ? 'Recompensa (caso encerrado)' : 'Recompensa combinada'}
                     </Text>
                     <Text style={[styles.rewardValue, { color: rewardPaid ? '#2ED573' : '#2F3542' }]}>
                       {fmtMoney(reward.amount)}
@@ -183,8 +183,7 @@ export default function PetCaseScreen() {
                   />
                 </View>
                 <View style={styles.rewardMetaRow}>
-                  <Text style={styles.rewardMeta}>Taxa do app: {fmtMoney(reward.fee_amount)}</Text>
-                  {reward.paid_at && <Text style={styles.rewardMeta}>Pago em {fmtDate(reward.paid_at)}</Text>}
+                  <Text style={styles.rewardMeta}>Combinada diretamente entre as pessoas — o app não intermedia o pagamento.</Text>
                 </View>
               </View>
             </>

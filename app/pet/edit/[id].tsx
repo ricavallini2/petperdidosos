@@ -16,7 +16,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../services/supabase';
 import { prepareForUpload } from '../../../services/upload';
-import { getFeeRate, getPetDetails, updatePet, increaseReward, PetSize, PetSex, PetAgeGroup, PetType } from '../../../services/api';
+import { getPetDetails, updatePet, increaseReward, PetSize, PetSex, PetAgeGroup, PetType } from '../../../services/api';
 import { toast } from '../../../components/Feedback';
 
 // Metadados por tipo de alerta (cor/título/rótulos) — espelha a tela de criar.
@@ -103,16 +103,7 @@ export default function EditPetScreen() {
   const [currentReward, setCurrentReward] = useState(0);
   const [rewardStatus, setRewardStatus] = useState<string | null>(null);
   const [increaseValue, setIncreaseValue] = useState('');
-  const [feeRate, setFeeRate] = useState(0.10);
-
   const incNum = Number(increaseValue.replace(',', '.')) || 0;
-  const fee = Number((incNum * feeRate).toFixed(2));
-  const total = incNum + fee;
-
-  // Busca a taxa administrativa vigente para o cálculo da prévia
-  useEffect(() => {
-    getFeeRate().then(setFeeRate);
-  }, []);
 
   useEffect(() => {
     (async () => {
@@ -505,13 +496,6 @@ export default function EditPetScreen() {
               <View>
                 <Text style={styles.rewardCurrentLabel}>Valor atual</Text>
                 <Text style={styles.rewardCurrentValue}>R$ {currentReward.toFixed(2)}</Text>
-                {rewardStatus && (
-                  <View style={[styles.statusPill, { backgroundColor: rewardStatus === 'locked' ? '#E8F8F5' : '#FFF6E5' }]}>
-                    <Text style={[styles.statusPillText, { color: rewardStatus === 'locked' ? '#2ED573' : '#FFA502' }]}>
-                      {rewardStatus === 'locked' ? 'Em escrow' : 'Pendente'}
-                    </Text>
-                  </View>
-                )}
               </View>
               <Ionicons name="gift" size={40} color="#FFD32A" />
             </View>
@@ -520,8 +504,8 @@ export default function EditPetScreen() {
 
             <Text style={styles.rewardIncreaseTitle}>Aumentar recompensa</Text>
             <Text style={styles.rewardIncreaseSub}>
-              Você pode apenas <Text style={{ fontWeight: '800', color: '#2F3542' }}>aumentar</Text> a recompensa.
-              Reduzir não é permitido para garantir o pagamento aos buscadores.
+              Você pode apenas <Text style={{ fontWeight: '800', color: '#2F3542' }}>aumentar</Text> o valor informado no anúncio.
+              O valor é combinado diretamente com quem ajudar.
             </Text>
 
             <View style={styles.currencyContainer}>
@@ -538,25 +522,11 @@ export default function EditPetScreen() {
             </View>
 
             {incNum > 0 && (
-              <View style={styles.feeBreakdown}>
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Aumento</Text>
-                  <Text style={styles.feeValue}>R$ {incNum.toFixed(2)}</Text>
-                </View>
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Taxa do app ({+(feeRate * 100).toFixed(2)}%)</Text>
-                  <Text style={styles.feeValue}>R$ {fee.toFixed(2)}</Text>
-                </View>
-                <View style={[styles.feeRow, styles.feeTotal]}>
-                  <Text style={styles.feeTotalLabel}>Total a reservar</Text>
-                  <Text style={styles.feeTotalValue}>R$ {total.toFixed(2)}</Text>
-                </View>
-                <View style={styles.newTotalBox}>
-                  <Ionicons name="trending-up" size={16} color="#2ED573" />
-                  <Text style={styles.newTotalText}>
-                    Recompensa final: <Text style={{ fontWeight: '900' }}>R$ {(currentReward + incNum).toFixed(2)}</Text>
-                  </Text>
-                </View>
+              <View style={styles.newTotalBox}>
+                <Ionicons name="trending-up" size={16} color="#2ED573" />
+                <Text style={styles.newTotalText}>
+                  Recompensa final: <Text style={{ fontWeight: '900' }}>R$ {(currentReward + incNum).toFixed(2)}</Text>
+                </Text>
               </View>
             )}
           </View>

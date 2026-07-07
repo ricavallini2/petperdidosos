@@ -106,7 +106,6 @@ app.get('/privacidade', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'privac
 app.get('/termos', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'termos.html')));
 
 const PORT = Number(process.env.PORT ?? 3005);
-const APP_FEE_RATE = 0.10; // taxa padrão (fallback) — a vigente fica em app_settings
 
 // Nº de denúncias que pausa um alerta e o envia para análise do admin.
 // TODO: tornar configurável pelo painel administrativo (app_settings).
@@ -121,18 +120,6 @@ const asyncHandler =
   (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
-
-// Lê a taxa administrativa configurada em app_settings; cai no fallback se
-// estiver indisponível ou inválida.
-async function getFeeRate(): Promise<number> {
-  const { data } = await supabase
-    .from('app_settings')
-    .select('fee_rate')
-    .eq('id', 1)
-    .maybeSingle();
-  const rate = Number(data?.fee_rate);
-  return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : APP_FEE_RATE;
-}
 
 // Config global do reconhecimento por foto (limiar de similaridade + raio de busca).
 async function getMatchConfig(): Promise<{ threshold: number; radiusM: number; strongThreshold: number }> {
@@ -158,11 +145,17 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Configuração pública lida pelo app para o cálculo da taxa
+// Config pública de doação voluntária (Pix/link externos, editáveis no admin).
+// Sem escrow: o app apenas exibe; nunca processa o pagamento.
 app.get(
-  '/config/fee-rate',
+  '/config/donation',
   asyncHandler(async (_req, res) => {
-    res.json({ feeRate: await getFeeRate() });
+    const { data } = await supabase
+      .from('app_settings')
+      .select('donation_pix_key, donation_url')
+      .eq('id', 1)
+      .maybeSingle();
+    res.json({ pixKey: data?.donation_pix_key ?? null, url: data?.donation_url ?? null });
   })
 );
 
@@ -1415,13 +1408,23 @@ app.post(
   })
 );
 
-// Configurações do app — taxa administrativa + reconhecimento por foto
+// Configurações do app — doação voluntária + reconhecimento por foto
+// (a taxa/escrow foi removida: o app não intermedia mais o pagamento)
+const readDonationConfig = async () => {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('donation_pix_key, donation_url')
+    .eq('id', 1)
+    .maybeSingle();
+  return { donationPixKey: data?.donation_pix_key ?? null, donationUrl: data?.donation_url ?? null };
+};
+
 app.get(
   '/admin/settings',
   requireAdmin,
   asyncHandler(async (_req, res) => {
     const { threshold, radiusM } = await getMatchConfig();
-    res.json({ feeRate: await getFeeRate(), matchThreshold: threshold, matchRadiusM: radiusM });
+    res.json({ matchThreshold: threshold, matchRadiusM: radiusM, ...(await readDonationConfig()) });
   })
 );
 
@@ -1431,13 +1434,6 @@ app.post(
   asyncHandler(async (req, res) => {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    if (req.body?.feeRate !== undefined) {
-      const feeRate = Number(req.body.feeRate);
-      if (!Number.isFinite(feeRate) || feeRate < 0 || feeRate > 1) {
-        return res.status(400).json({ error: 'feeRate deve ser um número entre 0 e 1' });
-      }
-      patch.fee_rate = feeRate;
-    }
     if (req.body?.matchThreshold !== undefined) {
       const t = Number(req.body.matchThreshold);
       if (!Number.isFinite(t) || t < 0 || t > 1) {
@@ -1452,12 +1448,22 @@ app.post(
       }
       patch.match_radius_m = r;
     }
+    if (req.body?.donationPixKey !== undefined) {
+      patch.donation_pix_key = String(req.body.donationPixKey ?? '').trim() || null;
+    }
+    if (req.body?.donationUrl !== undefined) {
+      const v = String(req.body.donationUrl ?? '').trim();
+      if (v && !/^https?:\/\//i.test(v)) {
+        return res.status(400).json({ error: 'donationUrl deve começar com http(s):// ou ficar vazio' });
+      }
+      patch.donation_url = v || null;
+    }
 
     const { error } = await supabase.from('app_settings').update(patch).eq('id', 1);
     if (error) throw error;
 
     const { threshold, radiusM } = await getMatchConfig();
-    res.json({ feeRate: await getFeeRate(), matchThreshold: threshold, matchRadiusM: radiusM });
+    res.json({ matchThreshold: threshold, matchRadiusM: radiusM, ...(await readDonationConfig()) });
   })
 );
 
@@ -2972,35 +2978,16 @@ app.post(
       await supabase.from('pet_photos').insert(rows);
     }
 
-    // Recompensa: só para pet perdido (lost). Avistado/resgatado não têm recompensa.
+    // Recompensa: só para pet perdido (lost). Valor é APENAS informativo no anúncio —
+    // combinado diretamente entre as pessoas; o app não intermedia (sem escrow/taxa).
     if (petType === 'lost' && reward_amount && Number(reward_amount) > 0) {
-      const amount = Number(reward_amount);
-      const fee = Number((amount * (await getFeeRate())).toFixed(2));
-      const { data: reward } = await supabase
-        .from('rewards')
-        .insert({
-          pet_id: pet.id,
-          amount,
-          fee_amount: fee,
-          status: 'pending',
-          payer_user_id: userId,
-        })
-        .select('id')
-        .single();
-
-      // Registra escrow no extrato para aparecer na carteira
-      if (reward) {
-        await supabase.from('transactions').insert({
-          user_id: userId,
-          type: 'escrow_hold',
-          amount: amount + fee,
-          fee_amount: fee,
-          status: 'pending',
-          reward_id: reward.id,
-          pet_id: pet.id,
-          description: `Recompensa ofertada (R$ ${amount.toFixed(2)} + taxa R$ ${fee.toFixed(2)})`,
-        });
-      }
+      await supabase.from('rewards').insert({
+        pet_id: pet.id,
+        amount: Number(reward_amount),
+        fee_amount: 0,
+        status: 'pending',
+        payer_user_id: userId,
+      });
     }
 
     // Responde já — embedding é gerado em background (não bloqueia o cadastro)
@@ -3393,12 +3380,10 @@ app.post(
     if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode aumentar a recompensa' });
     if (pet.status !== 'ativo') return res.status(400).json({ error: 'Pet não está ativo' });
 
-    const feeDelta = Number((value * (await getFeeRate())).toFixed(2));
-
-    // Procura recompensa existente ainda aberta
+    // Sem taxa/escrow: apenas atualiza o valor informativo exibido no anúncio.
     const { data: existing } = await supabase
       .from('rewards')
-      .select('id, amount, fee_amount, status')
+      .select('id, amount, status')
       .eq('pet_id', petId)
       .in('status', ['pending', 'locked'])
       .maybeSingle();
@@ -3406,10 +3391,9 @@ app.post(
     let rewardId: string;
     if (existing) {
       const newAmount = Number(existing.amount) + value;
-      const newFee = Number(existing.fee_amount) + feeDelta;
       const { error } = await supabase
         .from('rewards')
-        .update({ amount: newAmount, fee_amount: newFee })
+        .update({ amount: newAmount })
         .eq('id', existing.id);
       if (error) throw error;
       rewardId = existing.id;
@@ -3419,7 +3403,7 @@ app.post(
         .insert({
           pet_id: petId,
           amount: value,
-          fee_amount: feeDelta,
+          fee_amount: 0,
           status: 'pending',
           payer_user_id: userId,
         })
@@ -3429,23 +3413,7 @@ app.post(
       rewardId = created.id;
     }
 
-    // Transação de escrow_hold pra rastreabilidade. A primeira recompensa de um
-    // caso é "Recompensa ofertada"; valores adicionados depois são "Aumento".
-    const description = existing
-      ? `Aumento de recompensa (+R$ ${value.toFixed(2)} + taxa R$ ${feeDelta.toFixed(2)})`
-      : `Recompensa ofertada (R$ ${value.toFixed(2)} + taxa R$ ${feeDelta.toFixed(2)})`;
-    await supabase.from('transactions').insert({
-      user_id: userId,
-      type: 'escrow_hold',
-      amount: value + feeDelta,
-      fee_amount: feeDelta,
-      status: 'pending',
-      reward_id: rewardId,
-      pet_id: petId,
-      description,
-    });
-
-    res.json({ success: true, rewardId, deltaAmount: value, deltaFee: feeDelta });
+    res.json({ success: true, rewardId, deltaAmount: value });
   })
 );
 
@@ -3480,30 +3448,13 @@ app.post(
 
     await supabase.from('pets').update({ status: 'cancelado' }).eq('id', petId);
 
-    // Devolve recompensa (com taxa descontada) se houver
-    const { data: reward } = await supabase
+    // Sem escrow: apenas marca a recompensa como encerrada (registro), sem
+    // movimentar dinheiro — o valor era só informativo no anúncio.
+    await supabase
       .from('rewards')
-      .select('id, amount, fee_amount, status, payer_user_id')
+      .update({ status: 'refunded', refunded_at: new Date().toISOString() })
       .eq('pet_id', petId)
-      .in('status', ['pending', 'locked'])
-      .maybeSingle();
-
-    if (reward) {
-      const refund = Number(reward.amount) - Number(reward.fee_amount);
-      await supabase
-        .from('rewards')
-        .update({ status: 'refunded', refunded_at: new Date().toISOString() })
-        .eq('id', reward.id);
-
-      const { error: creditErr } = await supabase
-        .rpc('wallet_credit', { p_user_id: reward.payer_user_id, p_amount: refund });
-      if (creditErr) throw creditErr;
-
-      await supabase.from('transactions').insert([
-        { user_id: reward.payer_user_id, type: 'refund', amount: refund, reward_id: reward.id, pet_id: petId, description: 'Reembolso de cancelamento (taxa descontada)' },
-        { user_id: reward.payer_user_id, type: 'fee', amount: -Number(reward.fee_amount), reward_id: reward.id, pet_id: petId, description: 'Taxa do app' },
-      ]);
-    }
+      .in('status', ['pending', 'locked']);
 
     res.json({ success: true });
   })
@@ -3842,8 +3793,8 @@ app.post(
 
 // ============================================================================
 // CONTA — exclusão (LGPD). Remove o usuário e seus dados (cascata no banco).
-// Bloqueia quando há pendências financeiras (saldo ou recompensas ativas) e
-// limpa referências que não são cascata (adopter_user_id).
+// Sem escrow: a exclusão não é mais bloqueada por saldo/recompensas (carteira
+// desativada). Limpa referências que não são cascata (adopter_user_id).
 // ============================================================================
 app.delete(
   '/user/account',
@@ -3851,23 +3802,7 @@ app.delete(
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
 
-    // 1. Pendências financeiras → bloqueia
-    const { data: prof } = await supabase
-      .from('profiles').select('wallet_balance').eq('id', userId).maybeSingle();
-    if (prof && Number(prof.wallet_balance) > 0) {
-      return res.status(400).json({ error: 'Você possui saldo na carteira. Faça o saque antes de excluir a conta.' });
-    }
-
-    const { count: activeRewards } = await supabase
-      .from('rewards')
-      .select('id', { count: 'exact', head: true })
-      .eq('payer_user_id', userId)
-      .in('status', ['pending', 'locked']);
-    if ((activeRewards ?? 0) > 0) {
-      return res.status(400).json({ error: 'Você tem recompensas ativas em casos abertos. Encerre ou cancele esses casos antes de excluir a conta.' });
-    }
-
-    // 2. Limpa referências NO ACTION (adoção) que bloqueariam a exclusão
+    // 1. Limpa referências NO ACTION (adoção) que bloqueariam a exclusão
     await supabase.from('pets').update({ adopter_user_id: null }).eq('adopter_user_id', userId);
 
     // 3. Remove o usuário do Auth — cascata apaga profiles + dados relacionados.
@@ -4160,6 +4095,106 @@ app.post(
 // ============================================================================
 // CHAT — confirmar resgate (sem email — usa o finder do próprio chat)
 // ============================================================================
+// Registra a confirmação de reencontro de UMA das partes (tutor ou buscador).
+// O caso só encerra (pet 'encontrado') quando AMBOS confirmam. Sem dinheiro:
+// marca a recompensa como 'paid' apenas para exibição e incrementa rescues_count
+// exatamente uma vez (guardado pela transição atômica 'ativo'→'encontrado').
+type RescueConfirmResult =
+  | { ok: false; status: number; error: string }
+  | { ok: true; closed: false; waitingOn: 'tutor' | 'finder' }
+  | { ok: true; closed: true; finderId: string };
+
+async function applyRescueConfirmation(params: {
+  petId: string;
+  chatId: string | null;
+  confirmingUserId: string;
+  tutorId: string;
+  finderId: string;
+}): Promise<RescueConfirmResult> {
+  const { petId, chatId, confirmingUserId, tutorId, finderId } = params;
+  const isTutor = confirmingUserId === tutorId;
+  const isFinder = confirmingUserId === finderId;
+  if (!isTutor && !isFinder) {
+    return { ok: false, status: 403, error: 'Apenas o tutor ou quem encontrou pode confirmar' };
+  }
+
+  const nowIso = new Date().toISOString();
+  // Marca a coluna da parte que confirma (só se ainda não marcada — idempotente).
+  await supabase
+    .from('pets')
+    .update(isTutor ? { tutor_confirmed_at: nowIso } : { finder_confirmed_at: nowIso })
+    .eq('id', petId)
+    .is(isTutor ? 'tutor_confirmed_at' : 'finder_confirmed_at', null);
+
+  const { data: pet } = await supabase
+    .from('pets')
+    .select('id, status, finder_confirmed_at, tutor_confirmed_at')
+    .eq('id', petId)
+    .single();
+  if (!pet) return { ok: false, status: 404, error: 'Pet não encontrado' };
+
+  const bothConfirmed = !!pet.finder_confirmed_at && !!pet.tutor_confirmed_at;
+
+  if (!bothConfirmed) {
+    // Só uma parte confirmou → avisa a outra.
+    const otherId = isTutor ? finderId : tutorId;
+    await notifyUser(otherId, {
+      title: 'Confirme o reencontro 🐾',
+      body: `${isTutor ? 'O tutor' : 'Quem encontrou'} confirmou o reencontro. Confirme você também para encerrar o caso.`,
+      type: 'rescue_pending',
+      pet_id: petId,
+      ...(chatId ? { chat_id: chatId } : {}),
+    });
+    return { ok: true, closed: false, waitingOn: isTutor ? 'finder' : 'tutor' };
+  }
+
+  // Ambos confirmaram: só quem efetua a transição 'ativo'→'encontrado' faz o fecho
+  // (garante fechamento/incremento uma única vez, mesmo com entrypoints concorrentes).
+  const { data: transitioned } = await supabase
+    .from('pets')
+    .update({ status: 'encontrado' })
+    .eq('id', petId)
+    .eq('status', 'ativo')
+    .select('id');
+
+  if (transitioned && transitioned.length > 0) {
+    if (chatId) {
+      await supabase
+        .from('chats')
+        .update({ status: 'closed', found: true, closed_at: nowIso })
+        .eq('id', chatId);
+    }
+    await supabase
+      .from('chats')
+      .update({ status: 'closed', found: false, closed_at: nowIso })
+      .eq('pet_id', petId)
+      .eq('status', 'open');
+
+    // Reputação (não é dinheiro): incrementa rescues do buscador uma única vez.
+    await supabase.rpc('profile_increment_rescues', { p_user_id: finderId });
+
+    // Recompensa vira 'paid' só para EXIBIÇÃO — sem payout/transação/wallet.
+    await supabase
+      .from('rewards')
+      .update({ status: 'paid', finder_user_id: finderId, paid_at: nowIso })
+      .eq('pet_id', petId)
+      .in('status', ['pending', 'locked']);
+
+    await notifyUser(finderId, {
+      title: 'Reencontro confirmado! 🎉',
+      body: 'Obrigado por ajudar! Que tal avaliar essa experiência?',
+      type: 'rescue_confirmed', pet_id: petId, ...(chatId ? { chat_id: chatId } : {}),
+    });
+    await notifyUser(tutorId, {
+      title: 'Reencontro confirmado! 🎉',
+      body: 'Caso encerrado. Que tal avaliar essa experiência?',
+      type: 'rescue_confirmed', pet_id: petId, ...(chatId ? { chat_id: chatId } : {}),
+    });
+  }
+
+  return { ok: true, closed: true, finderId };
+}
+
 app.post(
   '/chats/:chatId/confirm-rescue',
   requireUser,
@@ -4173,75 +4208,25 @@ app.post(
       .eq('id', chatId)
       .single();
     if (chatErr || !chat) return res.status(404).json({ error: 'Chat não encontrado' });
-    if (chat.tutor_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode confirmar' });
 
     const { data: pet, error: petErr } = await supabase
       .from('pets')
-      .select('id, name, status')
+      .select('id, status')
       .eq('id', chat.pet_id)
       .single();
     if (petErr || !pet) return res.status(404).json({ error: 'Pet não encontrado' });
     if (pet.status !== 'ativo') return res.status(400).json({ error: `Pet com status ${pet.status} não pode ser confirmado` });
 
-    const finderId = chat.finder_id;
-
-    // 1. Marca pet como encontrado
-    await supabase.from('pets').update({ status: 'encontrado' }).eq('id', chat.pet_id);
-
-    // 2. Encerra este chat (found=true) e os demais chats abertos do pet (found=false)
-    await supabase
-      .from('chats')
-      .update({ status: 'closed', found: true, closed_at: new Date().toISOString() })
-      .eq('id', chat.id);
-    await supabase
-      .from('chats')
-      .update({ status: 'closed', found: false, closed_at: new Date().toISOString() })
-      .eq('pet_id', chat.pet_id)
-      .eq('status', 'open');
-
-    // 3. Libera recompensa (se houver)
-    const { data: reward } = await supabase
-      .from('rewards')
-      .select('id, amount, fee_amount, status, payer_user_id')
-      .eq('pet_id', chat.pet_id)
-      .in('status', ['pending', 'locked'])
-      .maybeSingle();
-
-    let rewardAmount = 0;
-    if (reward) {
-      rewardAmount = Number(reward.amount);
-      await supabase
-        .from('rewards')
-        .update({ status: 'paid', finder_user_id: finderId, paid_at: new Date().toISOString() })
-        .eq('id', reward.id);
-
-      // Crédito de recompensa + incremento de resgates de forma atômica.
-      const { error: payoutErr } = await supabase
-        .rpc('reward_payout', { p_user_id: finderId, p_amount: rewardAmount });
-      if (payoutErr) throw payoutErr;
-
-      const petName1 = pet?.name ?? 'Pet';
-      await supabase.from('transactions').insert([
-        { user_id: finderId, type: 'reward_received', amount: rewardAmount, reward_id: reward.id, pet_id: chat.pet_id, description: `Recompensa recebida - Caso ${petName1}` },
-        { user_id: reward.payer_user_id, type: 'escrow_release', amount: -rewardAmount, reward_id: reward.id, pet_id: chat.pet_id, description: `Liberação de recompensa - Caso ${petName1}` },
-      ]);
-    } else {
-      // Sem recompensa monetária: só incrementa contador
-      await supabase.rpc('profile_increment_rescues', { p_user_id: finderId });
-    }
-
-    // 4. Notificação
-    await notifyUser(finderId, {
-      title: 'Resgate confirmado! 🎉',
-      body: rewardAmount > 0
-        ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.`
-        : 'Obrigado pelo resgate!',
-      type: 'rescue_confirmed',
-      pet_id: chat.pet_id,
-      chat_id: chat.id,
+    const result = await applyRescueConfirmation({
+      petId: chat.pet_id,
+      chatId: chat.id,
+      confirmingUserId: userId,
+      tutorId: chat.tutor_id,
+      finderId: chat.finder_id,
     });
-
-    res.json({ success: true, finderId, reward: rewardAmount });
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    if (result.closed) return res.json({ success: true, closed: true, finderId: result.finderId });
+    return res.json({ success: true, pending: true, waitingOn: result.waitingOn });
   })
 );
 
@@ -4349,54 +4334,17 @@ app.post(
     const finder = users.users.find((u) => u.email?.toLowerCase() === String(finderEmail).toLowerCase());
     if (!finder) return res.status(404).json({ message: 'Email do herói não encontrado' });
 
-    // Atualiza pet
-    await supabase.from('pets').update({ status: 'encontrado' }).eq('id', petId);
-
-    // Encerra chat correspondente (se existir)
-    await supabase
-      .from('chats')
-      .update({ status: 'closed', found: true, closed_at: new Date().toISOString() })
-      .eq('pet_id', petId)
-      .eq('finder_id', finder.id);
-
-    // Libera recompensa
-    const { data: reward } = await supabase
-      .from('rewards')
-      .select('id, amount, fee_amount, status, payer_user_id')
-      .eq('pet_id', petId)
-      .in('status', ['pending', 'locked'])
-      .maybeSingle();
-
-    let rewardAmount = 0;
-    if (reward) {
-      rewardAmount = Number(reward.amount);
-      await supabase
-        .from('rewards')
-        .update({ status: 'paid', finder_user_id: finder.id, paid_at: new Date().toISOString() })
-        .eq('id', reward.id);
-
-      const { error: payoutErr } = await supabase
-        .rpc('reward_payout', { p_user_id: finder.id, p_amount: rewardAmount });
-      if (payoutErr) throw payoutErr;
-
-      const petName2 = pet?.name ?? 'Pet';
-      await supabase.from('transactions').insert([
-        { user_id: finder.id, type: 'reward_received', amount: rewardAmount, reward_id: reward.id, pet_id: petId, description: `Recompensa recebida - Caso ${petName2}` },
-        { user_id: reward.payer_user_id, type: 'escrow_release', amount: -rewardAmount, reward_id: reward.id, pet_id: petId, description: `Liberação de recompensa - Caso ${petName2}` },
-      ]);
-    } else {
-      // Sem recompensa monetária, mas ainda incrementa contador de resgates
-      await supabase.rpc('profile_increment_rescues', { p_user_id: finder.id });
-    }
-
-    await notifyUser(finder.id, {
-      title: 'Resgate confirmado! 🎉',
-      body: rewardAmount > 0 ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.` : 'Obrigado pelo resgate!',
-      type: 'rescue_confirmed',
-      pet_id: petId,
+    // Registra a confirmação do TUTOR (dupla confirmação — o buscador confirma no chat).
+    const result = await applyRescueConfirmation({
+      petId,
+      chatId: null,
+      confirmingUserId: tutorId,
+      tutorId,
+      finderId: finder.id,
     });
-
-    res.json({ success: true, finderId: finder.id, reward: rewardAmount });
+    if (!result.ok) return res.status(result.status).json({ message: result.error });
+    if (result.closed) return res.json({ success: true, closed: true, finderId: finder.id });
+    return res.json({ success: true, pending: true, waitingOn: result.waitingOn });
   })
 );
 
@@ -4553,53 +4501,11 @@ app.get(
 app.post(
   '/user/:userId/withdraw',
   requireUser,
-  asyncHandler(async (req, res) => {
-    const userId = authedId(req);
-    const { amount } = req.body ?? {};
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      return res.status(400).json({ error: 'Valor inválido' });
-    }
-
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('pix_key')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (!prof) return res.status(404).json({ error: 'Perfil não encontrado' });
-    if (!prof.pix_key) return res.status(400).json({ error: 'Cadastre uma chave PIX no perfil antes de sacar' });
-
-    // Débito atômico — retorna NULL se o saldo for insuficiente. Uma única
-    // instrução UPDATE evita double-spend sob requisições concorrentes.
-    const { data: newBalance, error: debitErr } = await supabase
-      .rpc('wallet_try_debit', { p_user_id: userId, p_amount: value });
-    if (debitErr) throw debitErr;
-    if (newBalance === null || newBalance === undefined) {
-      return res.status(400).json({ error: 'Saldo insuficiente' });
-    }
-
-    const { data: tx, error } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: userId,
-        type: 'withdraw',
-        amount: -value,
-        status: 'pending',
-        description: `Saque PIX solicitado para ${prof.pix_key}`,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-
-    await supabase.from('notifications').insert({
-      user_id: userId,
-      title: 'Saque solicitado',
-      body: `R$ ${value.toFixed(2)} — processamento em até 1 dia útil.`,
-      type: 'withdraw',
-    });
-
-    res.status(201).json(tx);
+  asyncHandler(async (_req, res) => {
+    // Escrow desativado: saques indisponíveis (carteira escondida no app). A
+    // infra (RPC wallet_try_debit, transações) permanece no banco para
+    // reativação futura; a rota fica registrada mas bloqueada.
+    res.status(410).json({ error: 'Saques temporariamente indisponíveis.' });
   })
 );
 
@@ -5295,57 +5201,27 @@ app.post(
     // relaciona o resgate ao caso, ENCERRA o caso e LIBERA a recompensa numa
     // única confirmação.
     if (src.type === 'rescued') {
-      const finderId = chat.finder_id;
-      const { data: lostPet } = await supabase
-        .from('pets').select('id, name, status').eq('id', chat.pet_id).single();
-      let rewardAmount = 0;
+      // Dupla confirmação: registra o lado do tutor; quem resgatou confirma no chat.
+      const result = await applyRescueConfirmation({
+        petId: chat.pet_id,
+        chatId: chat.id,
+        confirmingUserId: tutorId,
+        tutorId,
+        finderId: chat.finder_id,
+      });
+      if (!result.ok) return res.status(result.status).json({ error: result.error });
 
-      if (lostPet && lostPet.status === 'ativo') {
-        // 1. Encerra o caso (pet perdido)
-        await supabase.from('pets').update({ status: 'encontrado' }).eq('id', chat.pet_id);
-        // 2. Encerra os chats do caso
-        await supabase.from('chats')
-          .update({ status: 'closed', found: true, closed_at: new Date().toISOString() })
-          .eq('id', chat.id);
-        await supabase.from('chats')
-          .update({ status: 'closed', found: false, closed_at: new Date().toISOString() })
-          .eq('pet_id', chat.pet_id).eq('status', 'open');
-        // 3. Libera recompensa (se houver) para quem resgatou
-        const { data: reward } = await supabase
-          .from('rewards').select('id, amount, status, payer_user_id')
-          .eq('pet_id', chat.pet_id).in('status', ['pending', 'locked']).maybeSingle();
-        if (reward) {
-          rewardAmount = Number(reward.amount);
-          await supabase.from('rewards')
-            .update({ status: 'paid', finder_user_id: finderId, paid_at: new Date().toISOString() })
-            .eq('id', reward.id);
-          const { error: payoutErr } = await supabase.rpc('reward_payout', { p_user_id: finderId, p_amount: rewardAmount });
-          if (payoutErr) throw payoutErr;
-          const petName1 = lostPet?.name ?? 'Pet';
-          await supabase.from('transactions').insert([
-            { user_id: finderId, type: 'reward_received', amount: rewardAmount, reward_id: reward.id, pet_id: chat.pet_id, description: `Recompensa recebida - Caso ${petName1}` },
-            { user_id: reward.payer_user_id, type: 'escrow_release', amount: -rewardAmount, reward_id: reward.id, pet_id: chat.pet_id, description: `Liberação de recompensa - Caso ${petName1}` },
-          ]);
-        } else {
-          await supabase.rpc('profile_increment_rescues', { p_user_id: finderId });
-        }
-      }
-
-      // Mensagem de sistema + notificação de resgate
+      const sysMsg = result.closed
+        ? '🏆 Reencontro confirmado pelos dois! O caso foi encerrado.'
+        : '✅ O tutor confirmou o reencontro. Aguardando quem resgatou confirmar para encerrar.';
       await supabase.from('messages').insert({
-        chat_id: chat.id, sender_id: tutorId,
-        content: '🏆 Resgate confirmado pelo tutor! O caso foi encerrado.',
-        system: true,
-      });
-      await notifyUser(finderId, {
-        title: 'Resgate confirmado! 🎉',
-        body: rewardAmount > 0
-          ? `Recompensa de R$ ${rewardAmount.toFixed(2)} adicionada à sua carteira.`
-          : 'Obrigado por resgatar e devolver o pet!',
-        type: 'rescue_confirmed', pet_id: chat.pet_id, chat_id: chat.id,
+        chat_id: chat.id, sender_id: tutorId, content: sysMsg, system: true,
       });
 
-      return res.json({ success: true, sighting, sourceType: src.type, rescued: true, reward: rewardAmount });
+      return res.json({
+        success: true, sighting, sourceType: src.type, rescued: true,
+        ...(result.closed ? { closed: true } : { pending: true, waitingOn: result.waitingOn }),
+      });
     }
 
     // ---- AVISTAMENTO: apenas entra na linha do tempo do caso ---------------
@@ -5518,7 +5394,7 @@ app.post(
     });
     if (insertError) {
       if (insertError.code === '23505') {
-        return res.status(409).json({ error: 'Você já avaliou este buscador para este caso' });
+        return res.status(409).json({ error: 'Você já avaliou esta pessoa neste caso' });
       }
       throw insertError;
     }
@@ -5588,7 +5464,7 @@ PetPerdidoSOS conecta tutores de pets perdidos com buscadores voluntários da re
 **Cadastrar (aba Novo alerta):**
 - Escolha o tipo: "Perdi meu pet", "Vi um pet", "Resgatei um pet" ou "Doar um pet"
 - Preencha espécie, raça, cor, porte, sexo, idade, fotos e localização (GPS ou marcar no mapa, com busca por CEP/endereço)
-- Pet perdido: pode adicionar recompensa em dinheiro (fica em garantia até o resgate)
+- Pet perdido: pode informar um valor de recompensa — combinado diretamente com quem ajudar (o app não intermedia o pagamento)
 - Doação: descreva as regras de adoção e marque os 2 consentimentos (responsabilidades de doar; já procurou o dono antes)
 - Após cadastrar um pet visto/resgatado, o app oferece o reconhecimento facial para achar um pet perdido parecido
 
@@ -5608,16 +5484,15 @@ PetPerdidoSOS conecta tutores de pets perdidos com buscadores voluntários da re
 
 **Chat:**
 - Converse diretamente pelo app
-- Resgate: o tutor confirma pelo chat → recompensa liberada automaticamente; depois avalia o buscador (1 a 5 estrelas)
+- Reencontro: as DUAS partes confirmam pelo chat (tutor e quem ajudou); quando ambos confirmam, o caso encerra e cada um avalia o outro (1 a 5 estrelas)
 - Doação: o doador toca em "Confirmar doação" para registrar quem adotou
 - Conversa encerrada não aceita novas mensagens
 - Dá para denunciar usuários pelo botão de flag
 
-**Recompensas e Carteira:**
-- A recompensa fica em garantia (escrow) até o resgate ser confirmado
-- Taxa de serviço: 10% sobre o valor da recompensa
-- O buscador recebe o valor na carteira do app
-- Acesse em Perfil → Carteira e Saques (ou tocando no valor "Carteira" no topo do perfil) para ver saldo e solicitar saque
+**Recompensa:**
+- O valor é apenas informativo no anúncio — combinado e pago DIRETAMENTE entre o tutor e quem ajudar
+- O app NÃO intermedia nem retém o pagamento e não cobra taxa
+- Ao encerrar um reencontro, o app pode sugerir uma doação voluntária para ajudar a manter o projeto (opcional)
 
 **Premium (R$ 9,90/mês):**
 - Reconhecimentos de IA ilimitados (o plano grátis tem limite)
@@ -5628,7 +5503,7 @@ PetPerdidoSOS conecta tutores de pets perdidos com buscadores voluntários da re
 - Aparecer ou não como buscador no mapa; mostrar ou ocultar a foto de perfil
 - Alterar a senha (pede a senha atual)
 - Sair de todos os dispositivos
-- Excluir a conta (apaga os dados; exige não ter saldo nem recompensas ativas)
+- Excluir a conta (apaga os dados permanentemente)
 
 **Configurações (Perfil → Configurações):**
 - Notificações de novos alertas, raio de busca padrão, modo de locomoção (para rotas) e cor do seu pino no mapa

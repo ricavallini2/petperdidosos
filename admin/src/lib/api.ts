@@ -117,9 +117,10 @@ export interface Withdrawal {
 }
 
 export interface AppSettings {
-  feeRate: number;
   matchThreshold?: number; // 0-1 (reconhecimento facial)
   matchRadiusM?: number;   // raio de busca em metros
+  donationPixKey?: string | null; // doação voluntária (externa)
+  donationUrl?: string | null;
 }
 
 export interface AdminUserRow {
@@ -717,14 +718,15 @@ export const api = {
       body: JSON.stringify({ action }),
     }),
 
-  // Configurações — lê a taxa administrativa vigente.
+  // Configurações — lê doação + parâmetros de reconhecimento.
   settings: (): Promise<AppSettings> => authFetch('/admin/settings'),
 
-  // Configurações — atualiza taxa e/ou parâmetros de reconhecimento.
+  // Configurações — atualiza doação e/ou parâmetros de reconhecimento.
   updateSettings: (patch: {
-    feeRate?: number;
     matchThreshold?: number;
     matchRadiusM?: number;
+    donationPixKey?: string;
+    donationUrl?: string;
   }): Promise<AppSettings> =>
     authFetch('/admin/settings', {
       method: 'POST',

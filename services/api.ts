@@ -400,7 +400,7 @@ export const cancelChat = async (chatId: string): Promise<{ success: boolean }> 
 // Tutor confirma que o alerta relacionado é o seu pet (entra na timeline do caso).
 export const confirmSighting = async (
   chatId: string
-): Promise<{ success: boolean; sourceType: PetType; rescued?: boolean; reward?: number }> => {
+): Promise<{ success: boolean; sourceType: PetType; rescued?: boolean; closed?: boolean; pending?: boolean; waitingOn?: string }> => {
   const response = await authedFetch(`${API_URL}/sightings/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -540,6 +540,17 @@ export const confirmDonation = async (chatId: string): Promise<{ success: boolea
     throw new Error(err.error || `Erro HTTP: ${response.status}`);
   }
   return response.json();
+};
+
+// Config de doação voluntária (Pix/link externos, editáveis no admin). Best-effort.
+export const getDonationConfig = async (): Promise<{ pixKey: string | null; url: string | null }> => {
+  try {
+    const response = await authedFetch(`${API_URL}/config/donation`);
+    if (!response.ok) return { pixKey: null, url: null };
+    return response.json();
+  } catch {
+    return { pixKey: null, url: null };
+  }
 };
 
 // DOAÇÃO — conclui a doação feita por outro local (offline), sem adotante do app.

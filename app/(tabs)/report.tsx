@@ -13,7 +13,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { decode } from 'base64-arraybuffer';
-import { createPetReport, getFeeRate, PetSize, PetSex, PetAgeGroup, PetType, PetSpecies } from '../../services/api';
+import { createPetReport, PetSize, PetSex, PetAgeGroup, PetType, PetSpecies } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../services/supabase';
@@ -209,12 +209,6 @@ export default function ReportScreen() {
   // Recompensa
   const [rewardEnabled, setRewardEnabled] = useState(true);
   const [reward, setReward] = useState('50');
-  const [feeRate, setFeeRate] = useState(0.10);
-
-  // Busca a taxa administrativa vigente para o cálculo da prévia
-  useEffect(() => {
-    getFeeRate().then(setFeeRate);
-  }, []);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user } = useAuth();
@@ -268,8 +262,6 @@ export default function ReportScreen() {
       initParams.initSize, initParams.initSex]);
 
   const rewardValue = Number(reward) || 0;
-  const fee = rewardEnabled ? Number((rewardValue * feeRate).toFixed(2)) : 0;
-  const total = rewardEnabled ? rewardValue + fee : 0;
 
   // Cadastro completo (nome, idade, descrição): pet perdido e pet em doação.
   const fullForm = mode === 'lost' || mode === 'donation';
@@ -457,7 +449,7 @@ export default function ReportScreen() {
         toast.success(
           isLost
             ? (rewardEnabled
-                ? `Recompensa de R$ ${rewardValue.toFixed(2)} + taxa R$ ${fee.toFixed(2)} reservada (pagamento pendente — MVP).`
+                ? `Recompensa de R$ ${rewardValue.toFixed(2)} informada no anúncio.`
                 : 'Seu pet já aparece no mapa.')
             : (mode === 'sighted'
                 ? 'Pet visto publicado no mapa.'
@@ -960,29 +952,12 @@ export default function ReportScreen() {
 
             {rewardEnabled && (
               <>
-                <Text style={styles.rewardDescription}>
-                  Valor fica retido com segurança e só é liberado quando você confirmar o resgate.
-                </Text>
                 <View style={styles.currencyContainer}>
                   <Text style={styles.currencySymbol}>R$</Text>
                   <TextInput style={styles.currencyInput} keyboardType="numeric" value={reward} onChangeText={setReward} maxLength={6} />
                 </View>
-                <View style={styles.feeBreakdown}>
-                  <View style={styles.feeRow}>
-                    <Text style={styles.feeLabel}>Recompensa</Text>
-                    <Text style={styles.feeValue}>R$ {rewardValue.toFixed(2)}</Text>
-                  </View>
-                  <View style={styles.feeRow}>
-                    <Text style={styles.feeLabel}>Taxa do app ({+(feeRate * 100).toFixed(2)}%)</Text>
-                    <Text style={styles.feeValue}>R$ {fee.toFixed(2)}</Text>
-                  </View>
-                  <View style={[styles.feeRow, styles.feeTotal]}>
-                    <Text style={styles.feeTotalLabel}>Total a reservar</Text>
-                    <Text style={styles.feeTotalValue}>R$ {total.toFixed(2)}</Text>
-                  </View>
-                </View>
-                <Text style={styles.paymentNote}>
-                  ⚠️ Pagamento em produção será via Pix. Por enquanto (MVP) o registro é criado com status pendente.
+                <Text style={styles.rewardDescription}>
+                  Valor apenas informativo no anúncio, combinado diretamente entre você e quem ajudar. O app não intermedia o pagamento.
                 </Text>
               </>
             )}

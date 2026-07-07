@@ -2929,7 +2929,7 @@ function PetDetailsView({
               <View style={detStyles.rewardIcon}><Ionicons name="shield-checkmark" size={22} color="#FFF" /></View>
               <View style={{ flex: 1 }}>
                 <Text style={detStyles.rewardCardTitle}>Recompensa garantida</Text>
-                <Text style={detStyles.rewardCardSub}>O valor está reservado e será pago a quem ajudar a encontrar.</Text>
+                <Text style={detStyles.rewardCardSub}>Combinada diretamente com quem ajudar — o app não intermedia o pagamento.</Text>
               </View>
               <Text style={detStyles.rewardCardValue}>{formatBRL(Number(reward.amount))}</Text>
             </View>

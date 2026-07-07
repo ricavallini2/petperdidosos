@@ -181,16 +181,6 @@ export default function ProfileScreen() {
                 </Text>
                 <Text style={styles.statLabel}>Ativos</Text>
               </View>
-              <View style={styles.statDivider} />
-              <TouchableOpacity style={styles.statBox} activeOpacity={0.7} onPress={() => router.push('/profile/wallet')}>
-                <Text style={[styles.statNumber, { color: '#2ED573' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  R$ {Number(profileData?.wallet_balance ?? 0).toFixed(2)}
-                </Text>
-                <View style={styles.statLabelRow}>
-                  <Text style={styles.statLabel}>Carteira</Text>
-                  <Ionicons name="chevron-forward" size={12} color="#A4B0BE" />
-                </View>
-              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -222,7 +212,7 @@ export default function ProfileScreen() {
                 onCancel={() => {
                   showConfirm({
                     title: 'Cancelar alerta?',
-                    message: `O alerta de ${pet.name} será cancelado. Se houver recompensa, o valor será devolvido (com taxa descontada). Atenção: não é possível cancelar se há chats abertos.`,
+                    message: `O alerta de ${pet.name} será cancelado. Atenção: não é possível cancelar se há chats abertos.`,
                     confirmText: 'Cancelar alerta',
                     cancelText: 'Voltar',
                     destructive: true,
@@ -263,7 +253,6 @@ export default function ProfileScreen() {
           <MenuOption icon="heart-circle-outline" title="Pets para adoção" iconColor="#3B82F6" onPress={() => router.push('/doacao')} />
           <MenuOption icon="person-outline" title="Editar Perfil" iconColor="#FF4757" onPress={() => router.push('/profile/edit')} />
           <MenuOption icon="notifications-outline" title="Notificações" iconColor="#FF4757" onPress={() => router.push('/profile/notifications')} hasBadge />
-          <MenuOption icon="wallet-outline" title="Carteira e Saques" iconColor="#FF4757" onPress={() => router.push('/profile/wallet')} />
           <PremiumMenuOption isPremium={premium.isPremium} onPress={() => router.push('/profile/premium')} />
           <MenuOption icon="settings-outline" title="Configurações" iconColor="#FF4757" onPress={() => router.push('/profile/settings')} />
           <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => router.push('/profile/privacy')} />

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 
 export function Configuracoes() {
-  const [percent, setPercent] = useState('');
-  const [savedRate, setSavedRate] = useState<number | null>(null);
+  const [pixKey, setPixKey] = useState('');
+  const [url, setUrl] = useState('');
 
   const [threshPct, setThreshPct] = useState('');
   const [radiusKm, setRadiusKm] = useState('');
@@ -11,7 +11,7 @@ export function Configuracoes() {
   const [savedRadius, setSavedRadius] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [savingFee, setSavingFee] = useState(false);
+  const [savingDonation, setSavingDonation] = useState(false);
   const [savingMatch, setSavingMatch] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
@@ -20,8 +20,8 @@ export function Configuracoes() {
     api
       .settings()
       .then((s) => {
-        setSavedRate(s.feeRate);
-        setPercent(String(Number((s.feeRate * 100).toFixed(2))));
+        setPixKey(s.donationPixKey ?? '');
+        setUrl(s.donationUrl ?? '');
         if (s.matchThreshold != null) {
           setSavedThresh(s.matchThreshold);
           setThreshPct(String(Number((s.matchThreshold * 100).toFixed(0))));
@@ -35,24 +35,24 @@ export function Configuracoes() {
       .finally(() => setLoading(false));
   }, []);
 
-  const saveFee = async () => {
+  const saveDonation = async () => {
     setError('');
     setOk('');
-    const pct = Number(percent.replace(',', '.'));
-    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-      setError('Informe uma porcentagem entre 0 e 100.');
+    const u = url.trim();
+    if (u && !/^https?:\/\//i.test(u)) {
+      setError('O link de doação deve começar com http(s):// ou ficar vazio.');
       return;
     }
-    setSavingFee(true);
+    setSavingDonation(true);
     try {
-      const res = await api.updateSettings({ feeRate: pct / 100 });
-      setSavedRate(res.feeRate);
-      setPercent(String(Number((res.feeRate * 100).toFixed(2))));
-      setOk('Taxa atualizada com sucesso.');
+      const res = await api.updateSettings({ donationPixKey: pixKey.trim(), donationUrl: u });
+      setPixKey(res.donationPixKey ?? '');
+      setUrl(res.donationUrl ?? '');
+      setOk('Configuração de doação atualizada.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao salvar');
     } finally {
-      setSavingFee(false);
+      setSavingDonation(false);
     }
   };
 
@@ -94,40 +94,41 @@ export function Configuracoes() {
       <p className="page-desc">Parâmetros globais usados pelo app.</p>
 
       <section className="fin-section">
-        <h2>Taxa administrativa</h2>
+        <h2>Doação voluntária</h2>
         <p className="muted-text" style={{ marginBottom: 14 }}>
-          Percentual cobrado sobre cada recompensa. O app usa este valor ao calcular
-          a taxa na criação e no aumento de recompensas.
+          Ao concluir um reencontro, o app oferece uma doação <strong>opcional</strong> para apoiar o
+          projeto. O pagamento é feito diretamente pelo usuário (o app não intermedia). Deixe os
+          campos em branco para não exibir o convite.
         </p>
 
         {loading ? (
           <p className="muted-text">Carregando…</p>
         ) : (
-          <>
-            <div className="setting-card">
-              <label className="setting-field">
-                Taxa (%)
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={percent}
-                  onChange={(e) => { setPercent(e.target.value); setOk(''); }}
-                  disabled={savingFee}
-                />
-              </label>
-              <button className="btn-save" onClick={saveFee} disabled={savingFee}>
-                {savingFee ? 'Salvando…' : 'Salvar'}
-              </button>
-            </div>
-            {savedRate != null && (
-              <p className="muted-text" style={{ marginTop: 10 }}>
-                Valor atualmente aplicado:{' '}
-                <strong>{Number((savedRate * 100).toFixed(2)).toLocaleString('pt-BR')}%</strong>
-              </p>
-            )}
-          </>
+          <div className="setting-card">
+            <label className="setting-field">
+              Chave Pix
+              <input
+                type="text"
+                value={pixKey}
+                onChange={(e) => { setPixKey(e.target.value); setOk(''); }}
+                disabled={savingDonation}
+                placeholder="e-mail, telefone, CPF ou chave aleatória"
+              />
+            </label>
+            <label className="setting-field">
+              Link de doação (opcional)
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setOk(''); }}
+                disabled={savingDonation}
+                placeholder="https://..."
+              />
+            </label>
+            <button className="btn-save" onClick={saveDonation} disabled={savingDonation}>
+              {savingDonation ? 'Salvando…' : 'Salvar'}
+            </button>
+          </div>
         )}
       </section>
 

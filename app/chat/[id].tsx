@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image, ActivityIndicator, Modal, Keyboard, Animated, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image, ActivityIndicator, Modal, Keyboard, Animated, Dimensions, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { requestMapFocus } from '../../utils/mapFocus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation, getDonationQueue } from '../../services/api';
+import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation, getDonationQueue, getDonationConfig } from '../../services/api';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
@@ -52,6 +52,9 @@ export default function ChatScreen() {
   const [ratingComment, setRatingComment] = useState('');
   const [isRating, setIsRating] = useState(false);
   const [rescueReward, setRescueReward] = useState(0);
+  // Doação voluntária (Pix/link externos, do admin). Mostrada na conclusão positiva.
+  const [donation, setDonation] = useState<{ pixKey: string | null; url: string | null }>({ pixKey: null, url: null });
+  useEffect(() => { getDonationConfig().then(setDonation).catch(() => {}); }, []);
 
   // Confirmação de avistamento (chat vinculado a um alerta visto/resgatado)
   const [confirming, setConfirming] = useState(false);
@@ -250,10 +253,10 @@ export default function ChatScreen() {
       await fetchChat(); // o caso pode ter sido encerrado (resgate)
       if (r.rescued) {
         toast.success(
-          Number(r.reward) > 0
-            ? `Resgate confirmado! Recompensa de R$ ${Number(r.reward).toFixed(2)} liberada ao resgatador.`
-            : 'Resgate confirmado! O caso foi encerrado.',
-          'Resgate concluído',
+          r.pending
+            ? 'Sua confirmação foi registrada. Aguardando quem resgatou confirmar para encerrar.'
+            : 'Reencontro confirmado pelos dois! O caso foi encerrado.',
+          r.pending ? 'Quase lá! 🐾' : 'Resgate concluído',
         );
       } else {
         toast.success('Confirmado! O avistamento entrou na linha do tempo do caso.', 'É o seu pet!');
@@ -453,13 +456,16 @@ export default function ChatScreen() {
       const result = await confirmRescueByChat(chat.id, user.id);
       setShowCloseModal(false);
       await fetchChat();
-      const reward = Number(result?.reward ?? 0);
-      setRescueReward(reward);
+      if (result?.pending) {
+        toast.success('Sua confirmação foi registrada. Aguardando a outra pessoa confirmar para encerrar o caso.', 'Quase lá! 🐾');
+        return;
+      }
+      // Ambos confirmaram → caso encerrado: abre a avaliação mútua.
       setRatingScore(0);
       setRatingComment('');
       setShowRatingModal(true);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Erro ao confirmar resgate.');
+      toast.error(e?.message ?? 'Erro ao confirmar.');
     } finally {
       setIsClosing(false);
     }
@@ -484,13 +490,8 @@ export default function ChatScreen() {
         setIsRating(false);
       }
     }
-    // Mostra o aviso de resgate após (ou no lugar da) avaliação
-    toast.success(
-      rescueReward > 0
-        ? `Recompensa de R$ ${rescueReward.toFixed(2)} liberada para o herói.`
-        : 'Obrigado por usar o PetPerdidoSOS.',
-      'Resgate confirmado! 🎉',
-    );
+    // Conclusão positiva: agradece (o card de doação aparece no chat encerrado).
+    toast.success('Obrigado por usar o PetPerdidoSOS! 💚', 'Reencontro confirmado! 🎉');
   };
 
   const handleOpenReport = (targetProfile: any) => {
@@ -558,15 +559,15 @@ export default function ChatScreen() {
             </Text>
           </View>
         </View>
-        {isTutor && !chatClosed && chat ? (
+        {!chatClosed && chat ? (
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleCancelChat} disabled={cancelling} style={styles.headerAction}>
               <View style={styles.cancelHeaderBtn}><Ionicons name="close" size={20} color="#FF4757" /></View>
               <Text style={[styles.headerActionLabel, { color: '#FF4757' }]} numberOfLines={2}>Encerrar Chat</Text>
             </TouchableOpacity>
             {isDonation ? (
-              // Doação: confirma a adoção, relacionando este adotante ao pet.
-              !alreadyConfirmed && (
+              // Doação: só o doador (tutor) confirma a adoção, relacionando o adotante.
+              isTutor && !alreadyConfirmed && (
                 <TouchableOpacity activeOpacity={0.85} onPress={handleConfirmDonation} disabled={confirming} style={styles.headerAction}>
                   <LinearGradient
                     colors={['#60A5FA', '#3B82F6']}
@@ -582,6 +583,7 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               )
             ) : (
+              // Reencontro: AMBOS confirmam (dupla confirmação) — encerra quando os dois marcarem.
               <TouchableOpacity activeOpacity={0.85} onPress={() => setShowCloseModal(true)} style={styles.headerAction}>
                 <LinearGradient
                   colors={['#2ED573', '#26B765']}
@@ -591,15 +593,10 @@ export default function ChatScreen() {
                 >
                   <Ionicons name="checkmark-done" size={20} color="#FFF" />
                 </LinearGradient>
-                <Text style={[styles.headerActionLabel, { color: '#26B765' }]} numberOfLines={1}>Encontrei</Text>
+                <Text style={[styles.headerActionLabel, { color: '#26B765' }]} numberOfLines={1}>Reencontrei</Text>
               </TouchableOpacity>
             )}
           </View>
-        ) : !isTutor && !chatClosed && chat ? (
-          <TouchableOpacity onPress={handleCancelChat} disabled={cancelling} style={styles.headerAction}>
-            <View style={styles.cancelHeaderBtn}><Ionicons name="close" size={20} color="#FF4757" /></View>
-            <Text style={[styles.headerActionLabel, { color: '#FF4757' }]} numberOfLines={2}>Encerrar Chat</Text>
-          </TouchableOpacity>
         ) : (
           <View style={{ width: 40 }} />
         )}
@@ -613,6 +610,25 @@ export default function ChatScreen() {
               ? (isDonation ? 'Doação confirmada neste chat.' : 'Resgate confirmado neste chat.')
               : 'Chat encerrado pelo tutor.'}
           </Text>
+        </View>
+      )}
+
+      {chatClosed && chat?.found && !isDonation && (donation.pixKey || donation.url) && (
+        <View style={styles.donationCard}>
+          <Ionicons name="heart" size={20} color="#FF4757" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.donationTitle}>Apoie o PetPerdidoSOS 💚</Text>
+            <Text style={styles.donationSub}>Que bom que deu certo! Uma doação voluntária ajuda a manter o app no ar — totalmente opcional.</Text>
+            {!!donation.pixKey && (
+              <Text style={styles.donationPix} selectable>Pix: {donation.pixKey}</Text>
+            )}
+            {!!donation.url && (
+              <TouchableOpacity style={styles.donationBtn} activeOpacity={0.85} onPress={() => Linking.openURL(donation.url!)}>
+                <Ionicons name="open-outline" size={15} color="#FFF" />
+                <Text style={styles.donationBtnText}>Fazer uma doação</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 
@@ -743,9 +759,9 @@ export default function ChatScreen() {
       <Modal visible={showCloseModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Encerrar conversa</Text>
+            <Text style={styles.modalTitle}>Confirmar reencontro</Text>
             <Text style={styles.modalDesc}>
-              Este buscador encontrou seu pet? Ao confirmar, o alerta é finalizado e a recompensa (se houver) é transferida automaticamente para a carteira dele.
+              O pet foi reencontrado? O caso só é encerrado quando as duas pessoas confirmarem. Depois, vocês podem avaliar um ao outro.
             </Text>
 
             <TouchableOpacity
@@ -765,10 +781,10 @@ export default function ChatScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.modalConfirmText}>
-                    {isClosing ? 'Processando…' : 'Confirmar resgate'}
+                    {isClosing ? 'Processando…' : 'Confirmar reencontro'}
                   </Text>
                   {!isClosing && (
-                    <Text style={styles.modalConfirmSub}>Libera a recompensa ao herói</Text>
+                    <Text style={styles.modalConfirmSub}>Encerra quando os dois confirmarem</Text>
                   )}
                 </View>
                 {!isClosing && <Ionicons name="arrow-forward" size={20} color="rgba(255,255,255,0.9)" />}
@@ -923,8 +939,8 @@ export default function ChatScreen() {
             {/* Cabeçalho */}
             <View style={{ alignItems: 'center', marginBottom: 4 }}>
               <Avatar uri={otherProfile?.photo_url} size={72} style={styles.ratingAvatar} />
-              <Text style={styles.ratingTitle}>Como foi o buscador?</Text>
-              <Text style={styles.ratingSubtitle}>{otherProfile?.full_name ?? 'Buscador'}</Text>
+              <Text style={styles.ratingTitle}>Como foi sua experiência?</Text>
+              <Text style={styles.ratingSubtitle}>{otherProfile?.full_name ?? 'a outra pessoa'}</Text>
             </View>
 
             {/* Estrelas */}
@@ -1001,6 +1017,19 @@ const styles = StyleSheet.create({
   headerActionLabel: { fontSize: 9, fontWeight: '800', marginTop: 3, textAlign: 'center' },
   closedBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, backgroundColor: '#F1F2F6', gap: 6 },
   closedBannerText: { fontSize: 13, color: '#747D8C', fontWeight: '600' },
+  donationCard: {
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+    marginHorizontal: 16, marginTop: 10, padding: 14, borderRadius: 16,
+    backgroundColor: '#FFF0F1', borderWidth: 1, borderColor: '#FFD6DB',
+  },
+  donationTitle: { fontSize: 14.5, fontWeight: '900', color: '#2F3542', marginBottom: 3 },
+  donationSub: { fontSize: 12.5, color: '#747D8C', lineHeight: 17 },
+  donationPix: { fontSize: 13, fontWeight: '800', color: '#2F3542', marginTop: 8 },
+  donationBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    marginTop: 10, backgroundColor: '#FF4757', paddingHorizontal: 14, height: 38, borderRadius: 12,
+  },
+  donationBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },
 
   sourceBanner: { backgroundColor: '#EAF0FF', paddingHorizontal: 14, paddingVertical: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: '#D6E0FF' },
   sourceCard: {
