@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { fetchNearbyPets, getUserSettings, PetSighting, PetType, PetSpecies } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { showActionSheet, toast } from '../../components/Feedback';
+import { CollapsibleFilters } from '../../components/CollapsibleFilters';
 import { formatDistance } from '../../utils/formatDistance';
 import { colorMatches } from '../../utils/colorMatch';
 import { requestMapFocus } from '../../utils/mapFocus';
@@ -271,8 +272,8 @@ export default function AlertasScreen() {
         <Text style={styles.headerSub}>Pets na sua região</Text>
       </LinearGradient>
 
-      {/* Filtros */}
-      <View style={styles.filters}>
+      {/* Filtros recolhíveis */}
+      <CollapsibleFilters accentColor="#FF4757">
         <Text style={styles.filterLabel}>Espécie</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {SPECIES_FILTERS.map((f) => (
@@ -353,7 +354,7 @@ export default function AlertasScreen() {
             <Text style={[styles.chipText, radius >= 5000000 && styles.chipTextActive]}>Brasil todo</Text>
           </TouchableOpacity>
         </ScrollView>
-      </View>
+      </CollapsibleFilters>
 
       {/* Abas por tipo, com contador */}
       <View style={styles.tabsRow}>

@@ -12,6 +12,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { fetchDonations, DonationPet, PetSpecies } from '../../services/api';
 import { toast } from '../../components/Feedback';
+import { CollapsibleFilters } from '../../components/CollapsibleFilters';
 import { colorMatches } from '../../utils/colorMatch';
 import { formatDistance } from '../../utils/formatDistance';
 
@@ -244,8 +245,8 @@ export default function DoacaoScreen() {
         </View>
       </LinearGradient>
 
-      {/* Filtros */}
-      <View style={styles.filters}>
+      {/* Filtros recolhíveis */}
+      <CollapsibleFilters accentColor={DONATION_COLOR}>
         <Text style={styles.filterLabel}>Espécie</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {SPECIES_FILTERS.map((f) => (
@@ -306,7 +307,7 @@ export default function DoacaoScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </CollapsibleFilters>
 
       {loading && pets.length === 0 ? (
         <View style={styles.empty}>
