@@ -608,16 +608,6 @@ export const getTransactions = async (userId: string): Promise<Transaction[]> =>
 };
 
 // Taxa administrativa configurada no painel admin (fallback 10% se indisponível).
-export const getFeeRate = async (): Promise<number> => {
-  try {
-    const response = await authedFetch(`${API_URL}/config/fee-rate`);
-    if (!response.ok) return 0.10;
-    const data = await response.json();
-    return typeof data.feeRate === 'number' ? data.feeRate : 0.10;
-  } catch {
-    return 0.10;
-  }
-};
 
 export const requestWithdraw = async (userId: string, amount: number) => {
   const response = await authedFetch(`${API_URL}/user/${userId}/withdraw`, {

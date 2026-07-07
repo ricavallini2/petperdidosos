@@ -51,7 +51,6 @@ export default function ChatScreen() {
   const [ratingScore, setRatingScore] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
   const [isRating, setIsRating] = useState(false);
-  const [rescueReward, setRescueReward] = useState(0);
   // Doação voluntária (Pix/link externos, do admin). Mostrada na conclusão positiva.
   const [donation, setDonation] = useState<{ pixKey: string | null; url: string | null }>({ pixKey: null, url: null });
   useEffect(() => { getDonationConfig().then(setDonation).catch(() => {}); }, []);
@@ -308,7 +307,7 @@ export default function ChatScreen() {
           <Text style={styles.sourceSub}>
             {isTutor
               ? (relatedType === 'rescued'
-                  ? 'Confirme que é o seu pet para concluir o resgate e liberar a recompensa.'
+                  ? 'Confirme que é o seu pet para concluir o resgate.'
                   : 'Veja o pet que foi visto e confirme se é o seu.')
               : 'Veja o alerta de pet perdido do tutor para conferir.'}
           </Text>
@@ -791,13 +790,15 @@ export default function ChatScreen() {
               </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.modalSecondaryBtn}
-              onPress={async () => { setShowCloseModal(false); await handleCloseWithoutFound(); }}
-              disabled={isClosing}
-            >
-              <Text style={styles.modalSecondaryText}>Encerrar sem resgate</Text>
-            </TouchableOpacity>
+            {isTutor && (
+              <TouchableOpacity
+                style={styles.modalSecondaryBtn}
+                onPress={async () => { setShowCloseModal(false); await handleCloseWithoutFound(); }}
+                disabled={isClosing}
+              >
+                <Text style={styles.modalSecondaryText}>Encerrar sem resgate</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity onPress={() => setShowCloseModal(false)} style={styles.modalCancel}>
               <Text style={styles.modalCancelText}>Cancelar</Text>

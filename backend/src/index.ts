@@ -4334,6 +4334,15 @@ app.post(
     const finder = users.users.find((u) => u.email?.toLowerCase() === String(finderEmail).toLowerCase());
     if (!finder) return res.status(404).json({ message: 'Email do herói não encontrado' });
 
+    // Segurança: o e-mail precisa ser de quem REALMENTE tem conversa neste caso —
+    // evita creditar resgate/reputação a uma conta arbitrária escolhida pelo tutor.
+    const { count: finderChats } = await supabase
+      .from('chats')
+      .select('id', { count: 'exact', head: true })
+      .eq('pet_id', petId)
+      .eq('finder_id', finder.id);
+    if (!finderChats) return res.status(400).json({ message: 'Esse usuário não tem conversa neste caso.' });
+
     // Registra a confirmação do TUTOR (dupla confirmação — o buscador confirma no chat).
     const result = await applyRescueConfirmation({
       petId,

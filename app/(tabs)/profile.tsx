@@ -104,7 +104,7 @@ export default function ProfileScreen() {
     setIsConfirming(true);
     try {
       await confirmRescue(selectedPetId, user.id, finderEmail);
-      toast.success('A recompensa foi transferida para a carteira dele.', 'Resgate confirmado!');
+      toast.success('Sua confirmação foi registrada. Combine a recompensa diretamente com quem ajudou.', 'Resgate confirmado!');
       setShowRescueModal(false);
       setFinderEmail('');
       loadProfile(); // Reload data
@@ -280,7 +280,7 @@ export default function ProfileScreen() {
             </View>
             
             <Text style={styles.modalDesc}>
-              Seu pet foi encontrado por alguém usando o app? Digite o e-mail do usuário abaixo para transferir a recompensa.
+              Seu pet foi encontrado por alguém usando o app? Digite o e-mail dessa pessoa para registrar o reencontro. A recompensa é combinada diretamente entre vocês.
             </Text>
             
             <View style={styles.inputWrapper}>
@@ -446,12 +446,6 @@ function PetCard({ pet, styles, onConfirm, onFindOwner, onCancel, onEdit, onPres
                 <Text style={[styles.metaText, { color: '#FFA502', fontWeight: '800' }]}>
                   R$ {Number(pet.reward.amount).toFixed(2)}
                 </Text>
-                {pet.reward.status === 'pending' && (
-                  <Text style={styles.metaPending}> · pendente</Text>
-                )}
-                {pet.reward.status === 'locked' && (
-                  <Text style={[styles.metaPending, { color: '#2ED573' }]}> · garantida</Text>
-                )}
               </View>
             )}
             {/* Info específica do tipo */}
