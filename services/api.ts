@@ -553,6 +553,127 @@ export const getDonationConfig = async (): Promise<{ pixKey: string | null; url:
   }
 };
 
+// ============================================================================
+// ALERTA DE REGIÃO — destaque de pet perdido p/ buscadores no raio
+// ============================================================================
+
+export interface RegionAlertView {
+  id: string;
+  status: 'active' | 'deactivated' | 'expired';
+  comment: string | null;
+  radius_m: number;
+  likes_count: number;
+  my_liked: boolean;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+  pet: {
+    id: string;
+    name: string;
+    species: PetSpecies | null;
+    breed: string | null;
+    main_photo_url: string | null;
+    lost_date: string | null;
+    latitude: number;
+    longitude: number;
+    status: PetStatus;
+  } | null;
+  tutor: { id: string; full_name: string | null; photo_url: string | null } | null;
+  reward_amount: number | null;
+}
+
+// Tutor dispara o alerta. Erro 429 (rate-limit) traz `nextAvailableAt` no objeto de erro.
+export const sendRegionAlert = async (
+  petId: string,
+  data: { comment?: string; addToTimeline?: boolean },
+): Promise<{ alertId: string; radius_m: number }> => {
+  const response = await authedFetch(`${API_URL}/pets/${petId}/region-alert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ comment: data.comment ?? null, add_to_timeline: !!data.addToTimeline }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const e: any = new Error((err as any).error || `Erro HTTP: ${response.status}`);
+    e.status = response.status;
+    e.nextAvailableAt = (err as any).nextAvailableAt;
+    throw e;
+  }
+  return response.json();
+};
+
+export const getRegionAlert = async (id: string): Promise<RegionAlertView> => {
+  const response = await authedFetch(`${API_URL}/region-alerts/${id}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+// Via B: alertas ativos no raio da localização atual (banner ao vivo). Best-effort.
+export const getNearbyRegionAlerts = async (lat: number, lng: number): Promise<RegionAlertView[]> => {
+  try {
+    // Coordenadas no CORPO (POST), nunca na query string — não vazam em logs/Sentry.
+    const response = await authedFetch(`${API_URL}/region-alerts/nearby`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng }),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.alerts ?? [];
+  } catch {
+    return [];
+  }
+};
+
+export const likeRegionAlert = async (id: string): Promise<{ liked: boolean; likes_count: number }> => {
+  const response = await authedFetch(`${API_URL}/region-alerts/${id}/like`, { method: 'POST' });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const reportRegionAlert = async (
+  id: string,
+  reason: string,
+): Promise<{ success: boolean; deactivated: boolean }> => {
+  const response = await authedFetch(`${API_URL}/region-alerts/${id}/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const markRegionAlertSeen = async (id: string): Promise<void> => {
+  try {
+    await authedFetch(`${API_URL}/region-alerts/${id}/seen`, { method: 'POST' });
+  } catch {
+    // best-effort
+  }
+};
+
+// Persiste a localização atual (o backend só grava se o opt-in estiver ligado).
+export const updateMyLocation = async (lat: number, lng: number): Promise<void> => {
+  try {
+    await authedFetch(`${API_URL}/me/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng }),
+    });
+  } catch {
+    // best-effort
+  }
+};
+
 // DOAÇÃO — conclui a doação feita por outro local (offline), sem adotante do app.
 export const concludeDonation = async (petId: string): Promise<{ success: boolean }> => {
   const response = await authedFetch(`${API_URL}/pets/${petId}/conclude-donation`, {
@@ -672,6 +793,7 @@ export const updateUserSettings = async (
     travel_mode?: 'walking' | 'driving' | 'bicycling' | 'transit';
     pin_color?: string;
     show_profile_photo?: boolean;
+    region_alerts_enabled?: boolean;
   }
 ) => {
   const response = await authedFetch(`${API_URL}/user/${userId}/settings`, {

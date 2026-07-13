@@ -26,6 +26,7 @@ interface Notif {
   chat_status?: string | null;
   chat_tutor_id?: string | null;
   chat_finder_id?: string | null;
+  region_alert_id?: string | null;
 }
 
 // Metadados visuais por tipo de notificação
@@ -44,6 +45,8 @@ const TYPE_META: Record<string, { icon: any; color: string; bg: string }> = {
   premium_activated:  { icon: 'star',                color: '#FFA502', bg: '#FFF6E5' },
   premium_cancelled:  { icon: 'star-outline',        color: '#747D8C', bg: '#F1F2F6' },
   pet_paused:         { icon: 'pause-circle',        color: '#FFA502', bg: '#FFF6E5' },
+  region_alert:       { icon: 'megaphone',           color: '#FF4757', bg: '#FFF0F1' },
+  region_alert_paused:{ icon: 'megaphone-outline',   color: '#FFA502', bg: '#FFF6E5' },
   default:            { icon: 'notifications',       color: '#FF4757', bg: '#FFF0F1' },
 };
 const metaOf = (type?: string) => TYPE_META[type ?? 'default'] ?? TYPE_META.default;
@@ -134,6 +137,10 @@ export default function NotificationsScreen() {
       case 'premium_cancelled':
         return { route: '/profile/premium', label: 'Ver Premium' };
       case 'pet_paused':
+        return { route: '/(tabs)/profile', label: 'Ver meus alertas' };
+      case 'region_alert':
+        return n.region_alert_id ? { route: `/region-alert/${n.region_alert_id}` as Href, label: 'Ver alerta' } : null;
+      case 'region_alert_paused':
         return { route: '/(tabs)/profile', label: 'Ver meus alertas' };
       default:
         // Qualquer notificação vinculada a um chat abre a conversa.

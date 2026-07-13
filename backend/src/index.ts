@@ -1413,10 +1413,16 @@ app.post(
 const readDonationConfig = async () => {
   const { data } = await supabase
     .from('app_settings')
-    .select('donation_pix_key, donation_url')
+    .select('donation_pix_key, donation_url, region_alert_radius_m, region_alert_cooldown_h, region_alert_reports_to_deactivate')
     .eq('id', 1)
     .maybeSingle();
-  return { donationPixKey: data?.donation_pix_key ?? null, donationUrl: data?.donation_url ?? null };
+  return {
+    donationPixKey: data?.donation_pix_key ?? null,
+    donationUrl: data?.donation_url ?? null,
+    regionAlertRadiusM: data?.region_alert_radius_m ?? 10000,
+    regionAlertCooldownH: data?.region_alert_cooldown_h ?? 24,
+    regionAlertReportsToDeactivate: data?.region_alert_reports_to_deactivate ?? 5,
+  };
 };
 
 app.get(
@@ -1457,6 +1463,27 @@ app.post(
         return res.status(400).json({ error: 'donationUrl deve começar com http(s):// ou ficar vazio' });
       }
       patch.donation_url = v || null;
+    }
+    if (req.body?.regionAlertRadiusM !== undefined) {
+      const r = Number(req.body.regionAlertRadiusM);
+      if (!Number.isInteger(r) || r < 500 || r > 200000) {
+        return res.status(400).json({ error: 'regionAlertRadiusM deve ser um inteiro entre 500 e 200000 (metros)' });
+      }
+      patch.region_alert_radius_m = r;
+    }
+    if (req.body?.regionAlertCooldownH !== undefined) {
+      const h = Number(req.body.regionAlertCooldownH);
+      if (!Number.isInteger(h) || h < 1 || h > 168) {
+        return res.status(400).json({ error: 'regionAlertCooldownH deve ser um inteiro entre 1 e 168 (horas)' });
+      }
+      patch.region_alert_cooldown_h = h;
+    }
+    if (req.body?.regionAlertReportsToDeactivate !== undefined) {
+      const n = Number(req.body.regionAlertReportsToDeactivate);
+      if (!Number.isInteger(n) || n < 1 || n > 100) {
+        return res.status(400).json({ error: 'regionAlertReportsToDeactivate deve ser um inteiro entre 1 e 100' });
+      }
+      patch.region_alert_reports_to_deactivate = n;
     }
 
     const { error } = await supabase.from('app_settings').update(patch).eq('id', 1);
@@ -2278,7 +2305,7 @@ app.get(
 
     let query = supabase
       .from('reports')
-      .select('id, reporter_id, reported_id, chat_id, pet_id, reason, status, created_at')
+      .select('id, reporter_id, reported_id, chat_id, pet_id, region_alert_id, reason, status, created_at')
       .order('created_at', { ascending: false });
     if (status) query = query.eq('status', status);
     if (from) query = query.gte('created_at', from);
@@ -2326,6 +2353,7 @@ app.get(
       pet: r.pet_id
         ? { id: r.pet_id, name: petMap.get(r.pet_id as string) ?? null }
         : null,
+      region_alert_id: r.region_alert_id ?? null,
     }));
 
     if (q) {
@@ -2394,12 +2422,29 @@ app.get(
       ? { ...reportedRes.data, email: reportedAuth.data?.user?.email ?? null }
       : null;
 
+    // Contexto do alerta de região, quando a denúncia for de um alerta.
+    let regionAlert: Record<string, unknown> | null = null;
+    if (report.region_alert_id) {
+      const { data: ra } = await supabase
+        .from('region_alerts')
+        .select('id, pet_id, tutor_id, comment, status, reports_count, likes_count, radius_m, created_at')
+        .eq('id', report.region_alert_id)
+        .maybeSingle();
+      if (ra) {
+        const { data: raPet } = ra.pet_id
+          ? await supabase.from('pets').select('id, name, type, status, main_photo_url').eq('id', ra.pet_id).maybeSingle()
+          : { data: null };
+        regionAlert = { ...ra, pet: raPet ?? null };
+      }
+    }
+
     res.json({
       report,
       reporter,
       reported,
       pet: petRes.data,
       messages: msgsRes.data ?? [],
+      regionAlert,
     });
   })
 );
@@ -2434,6 +2479,42 @@ app.patch(
     if (!data) return res.status(404).json({ error: 'Denúncia não encontrada' });
     await logAudit(req, 'report.update', 'report', id, update);
     res.json(data);
+  })
+);
+
+// Reativa um alerta de região desativado por denúncias, após revisão da moderação.
+// Marca as denúncias do alerta como descartadas e avisa o tutor.
+app.post(
+  '/admin/region-alerts/:id/reactivate',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const alertId = req.params.id;
+    const { data: alert } = await supabase
+      .from('region_alerts')
+      .select('id, tutor_id, status')
+      .eq('id', alertId)
+      .maybeSingle();
+    if (!alert) return res.status(404).json({ error: 'Alerta não encontrado' });
+    // Guard de estado: só reativa o que está desativado (evita descartar denúncias
+    // legítimas novas e notificação confusa em chamada repetida/stale/concorrente).
+    if (alert.status !== 'deactivated') return res.status(409).json({ error: 'Alerta não está desativado' });
+
+    // Zera o placar: a reativação recomeça a contagem de denúncias do zero.
+    await supabase.from('region_alerts').update({ status: 'active', reports_count: 0 }).eq('id', alertId);
+    await supabase
+      .from('reports')
+      .update({ status: 'dismissed' })
+      .eq('region_alert_id', alertId)
+      .in('status', ['pending', 'reviewing']);
+    await notifyUser(alert.tutor_id, {
+      title: 'Alerta de região reativado',
+      body: 'Após revisão da moderação, seu alerta voltou a ficar ativo.',
+      type: 'region_alert',
+      region_alert_id: alertId,
+      pet_id: null,
+    });
+    await logAudit(req, 'region_alert.reactivate', 'region_alert', alertId, {});
+    res.json({ success: true });
   })
 );
 
@@ -3767,20 +3848,27 @@ app.post(
   requireUser,
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
-    const { show_on_map, notification_channel, default_search_radius_m, travel_mode, pin_color, show_profile_photo } = req.body ?? {};
+    const { show_on_map, notification_channel, default_search_radius_m, travel_mode, pin_color, show_profile_photo, region_alerts_enabled } = req.body ?? {};
 
-    const { data, error } = await supabase
-      .from('user_settings')
-      .upsert({
-        user_id: userId,
-        show_on_map,
-        notification_channel,
-        default_search_radius_m,
-        travel_mode,
-        pin_color,
-      })
-      .select()
-      .single();
+    const payload: Record<string, unknown> = {
+      user_id: userId,
+      show_on_map,
+      notification_channel,
+      default_search_radius_m,
+      travel_mode,
+      pin_color,
+    };
+    if (region_alerts_enabled !== undefined) {
+      payload.region_alerts_enabled = !!region_alerts_enabled;
+      // Privacidade: ao DESLIGAR o opt-in, apaga a localização persistida.
+      if (!region_alerts_enabled) {
+        payload.last_lat = null;
+        payload.last_lng = null;
+        payload.last_location_at = null;
+      }
+    }
+
+    const { data, error } = await supabase.from('user_settings').upsert(payload).select().single();
     if (error) throw error;
 
     // Privacidade da foto fica em profiles.
@@ -3973,7 +4061,7 @@ async function sendExpoPush(
 // Cria a notificação no app E dispara o push nativo, numa só chamada.
 async function notifyUser(
   userId: string,
-  n: { title: string; body: string; type?: string; pet_id?: string | null; chat_id?: string | null; ticket_id?: string | null },
+  n: { title: string; body: string; type?: string; pet_id?: string | null; chat_id?: string | null; ticket_id?: string | null; region_alert_id?: string | null },
 ) {
   await supabase.from('notifications').insert({
     user_id: userId,
@@ -3983,6 +4071,7 @@ async function notifyUser(
     pet_id: n.pet_id ?? null,
     chat_id: n.chat_id ?? null,
     ticket_id: n.ticket_id ?? null,
+    region_alert_id: n.region_alert_id ?? null,
   });
   // Enriquecimento: se a notificação é de um chat, incluímos os participantes
   // para o toque no push abrir a CONVERSA certa (o chat precisa de tutor+finder).
@@ -3993,7 +4082,7 @@ async function notifyUser(
     if (c) chatExtra = { chat_tutor_id: c.tutor_id, chat_finder_id: c.finder_id, chat_status: c.status };
   }
   await sendExpoPush(userId, n.title, n.body, {
-    type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id, ...chatExtra,
+    type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id, region_alert_id: n.region_alert_id, ...chatExtra,
   });
 }
 
@@ -4368,7 +4457,7 @@ app.get(
     const { data, error } = await supabase
       .from('notifications')
       .select(
-        `id, user_id, title, body, type, pet_id, chat_id, ticket_id, read, created_at,
+        `id, user_id, title, body, type, pet_id, chat_id, ticket_id, region_alert_id, read, created_at,
          pets ( name, status ),
          chats (
            status, tutor_id, finder_id,
@@ -4415,6 +4504,7 @@ app.get(
         chat_status,
         chat_tutor_id,
         chat_finder_id,
+        region_alert_id: n.region_alert_id ?? null,
       };
     });
     res.json(enriched);
@@ -5879,6 +5969,279 @@ app.get(
 // ERROR HANDLER
 // ============================================================================
 // Sentry captura os erros que chegam até aqui (antes de responder ao cliente).
+// ============================================================================
+// ALERTA DE REGIÃO — tutor destaca o pet perdido para buscadores no raio.
+// Entrega: Via A (push, localização persistida + opt-in) + Via B (banner ao vivo
+// para quem está ativo no raio). Curtir/denunciar; muitas denúncias desativam.
+// ============================================================================
+
+async function getRegionAlertConfig() {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('region_alert_radius_m, region_alert_cooldown_h, region_alert_reports_to_deactivate')
+    .eq('id', 1)
+    .maybeSingle();
+  return {
+    radiusM: Number(data?.region_alert_radius_m) || 10000,
+    cooldownH: Number(data?.region_alert_cooldown_h) || 24,
+    reportsToDeactivate: Number(data?.region_alert_reports_to_deactivate) || 5,
+  };
+}
+
+// Push em lote (chunks de 100 — limite do Expo). Best-effort; poda tokens mortos.
+async function sendExpoPushBatch(tokens: string[], title: string, body: string, data?: Record<string, unknown>) {
+  const uniq = Array.from(new Set(tokens.filter(Boolean)));
+  const dead: string[] = [];
+  for (let i = 0; i < uniq.length; i += 100) {
+    const chunk = uniq.slice(i, i + 100);
+    const messages = chunk.map((to) => ({ to, title, body, sound: 'default', data: data ?? {}, channelId: 'default', priority: 'high' }));
+    try {
+      const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(messages),
+      });
+      const out: any = await resp.json().catch(() => null);
+      (out?.data ?? []).forEach((t: any, idx: number) => {
+        if (t?.status === 'error' && t?.details?.error === 'DeviceNotRegistered') dead.push(chunk[idx]);
+      });
+    } catch (e: any) {
+      console.warn('[push-batch] falha:', e?.message);
+    }
+  }
+  if (dead.length) await supabase.from('push_tokens').delete().in('token', dead);
+}
+
+// Monta o payload da tela do alerta (pet + tutor + recompensa + comentário).
+async function buildRegionAlertView(alertId: string, viewerId: string) {
+  const { data: alert } = await supabase.from('region_alerts').select('*').eq('id', alertId).maybeSingle();
+  if (!alert) return null;
+  const [{ data: pet }, { data: tutor }, { data: reward }, { data: liked }] = await Promise.all([
+    supabase.from('pets').select('id, name, species, breed, main_photo_url, lost_date, latitude, longitude, status').eq('id', alert.pet_id).maybeSingle(),
+    supabase.from('profiles').select('id, full_name, photo_url, show_profile_photo').eq('id', alert.tutor_id).maybeSingle(),
+    supabase.from('rewards').select('amount').eq('pet_id', alert.pet_id).in('status', ['pending', 'locked', 'paid']).order('amount', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('region_alert_likes').select('alert_id').eq('alert_id', alertId).eq('user_id', viewerId).maybeSingle(),
+  ]);
+  if (tutor) gateProfilePhoto(tutor);
+  return {
+    id: alert.id,
+    status: alert.status,
+    comment: alert.comment,
+    radius_m: alert.radius_m,
+    likes_count: alert.likes_count,
+    my_liked: !!liked,
+    latitude: alert.latitude,
+    longitude: alert.longitude,
+    created_at: alert.created_at,
+    pet: pet ?? null,
+    tutor: tutor ? { id: tutor.id, full_name: tutor.full_name, photo_url: tutor.photo_url } : null,
+    reward_amount: reward?.amount != null ? Number(reward.amount) : null,
+  };
+}
+
+// Fan-out (Via A): busca destinatários no raio (opt-in + localização fresca + token),
+// insere notificações e dispara push em lote. Roda em background (fire-and-forget).
+async function fanOutRegionAlert(
+  alertId: string, petId: string, tutorId: string, petName: string,
+  lat: number, lng: number, cfg: { radiusM: number }, comment: string | null,
+) {
+  try {
+    const freshSince = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(); // localização dos últimos 7 dias
+    const { data: recips } = await supabase.rpc('region_alert_recipients', {
+      p_lat: lat, p_lng: lng, p_radius_m: cfg.radiusM, p_exclude: tutorId, p_fresh_since: freshSince,
+    });
+    const rows = (recips ?? []) as { user_id: string; token: string }[];
+    if (rows.length === 0) return;
+    const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+    const tokens = rows.map((r) => r.token).filter(Boolean) as string[]; // LEFT JOIN pode trazer token null
+    const title = '🔎 Pet perdido perto de você';
+    const body = comment ? `${petName}: ${comment}` : `Ajude a encontrar ${petName} na sua região.`;
+    await supabase.from('notifications').insert(
+      userIds.map((uid) => ({ user_id: uid, title, body, type: 'region_alert', pet_id: petId, region_alert_id: alertId })),
+    );
+    await sendExpoPushBatch(tokens, title, body, { type: 'region_alert', alert_id: alertId, pet_id: petId });
+  } catch (e: any) {
+    console.warn('[region-alert fanout]', e?.message);
+  }
+}
+
+// POST /pets/:petId/region-alert — tutor dispara o alerta (rate-limit por cooldown).
+app.post(
+  '/pets/:petId/region-alert',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { comment, add_to_timeline } = req.body ?? {};
+
+    const { data: pet } = await supabase
+      .from('pets').select('id, user_id, status, latitude, longitude, type, name').eq('id', petId).maybeSingle();
+    if (!pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode alertar a região' });
+    if (pet.type !== 'lost') return res.status(400).json({ error: 'Só pets perdidos podem alertar a região' });
+    if (pet.status !== 'ativo') return res.status(400).json({ error: 'O caso não está ativo' });
+    if (!Number.isFinite(Number(pet.latitude)) || !Number.isFinite(Number(pet.longitude))) {
+      return res.status(400).json({ error: 'Pet sem localização definida' });
+    }
+
+    const cfg = await getRegionAlertConfig();
+    const cleanComment = comment ? String(comment).trim().slice(0, 500) || null : null;
+
+    // Criação atômica: a função serializa cooldown-check + insert por pet (advisory
+    // lock), eliminando a corrida que gerava 2 alertas + push duplicado.
+    const { data: created, error } = await supabase.rpc('create_region_alert', {
+      p_pet: petId, p_tutor: userId,
+      p_lat: Number(pet.latitude), p_lng: Number(pet.longitude),
+      p_radius: cfg.radiusM, p_comment: cleanComment, p_timeline: !!add_to_timeline, p_cooldown_h: cfg.cooldownH,
+    });
+    if (error) throw error;
+    const row = (Array.isArray(created) ? created[0] : created) as
+      | { alert_id: string | null; blocked: boolean; next_at: string | null }
+      | undefined;
+    if (!row) throw new Error('create_region_alert não retornou resultado');
+    if (row.blocked) {
+      return res.status(429).json({ error: 'Você já alertou a região recentemente.', nextAvailableAt: row.next_at });
+    }
+
+    // Responde já; o fan-out (push + notificações) roda em background.
+    res.status(201).json({ alertId: row.alert_id, radius_m: cfg.radiusM });
+    void fanOutRegionAlert(row.alert_id!, petId, userId, pet.name ?? 'um pet', Number(pet.latitude), Number(pet.longitude), cfg, cleanComment);
+  })
+);
+
+// GET /region-alerts/:id — dados da tela do alerta.
+app.get(
+  '/region-alerts/:id',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const viewerId = authedId(req);
+    const view = await buildRegionAlertView(req.params.id, viewerId);
+    if (!view) return res.status(404).json({ error: 'Alerta não encontrado' });
+    // Alertas desativados (por moderação) não são servidos a estranhos — só ao tutor.
+    if (view.status !== 'active' && view.tutor?.id !== viewerId) {
+      return res.status(404).json({ error: 'Alerta não encontrado' });
+    }
+    res.json(view);
+  })
+);
+
+// POST /region-alerts/nearby — Via B (banner ao vivo p/ quem está ativo no raio).
+// Coordenadas vão no CORPO (nunca na query string) p/ não vazarem em logs/Sentry.
+app.post(
+  '/region-alerts/nearby',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ error: 'lat e lng obrigatórios' });
+    const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString(); // alertas das últimas 12h
+    const { data: alerts } = await supabase.rpc('region_alerts_near_user', { p_lat: lat, p_lng: lng, p_user: userId, p_since: since });
+    const list = (alerts ?? []) as any[];
+    if (list.length === 0) return res.json({ alerts: [] });
+    const views = await Promise.all(list.slice(0, 5).map((a) => buildRegionAlertView(a.id, userId)));
+    res.json({ alerts: views.filter(Boolean) });
+  })
+);
+
+// POST /region-alerts/:id/seen — marca como visto (não reabrir o banner).
+app.post(
+  '/region-alerts/:id/seen',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    await supabase.from('region_alert_views').upsert({ alert_id: req.params.id, user_id: userId }, { onConflict: 'alert_id,user_id' });
+    res.json({ success: true });
+  })
+);
+
+// POST /region-alerts/:id/like — alterna curtida.
+app.post(
+  '/region-alerts/:id/like',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const alertId = req.params.id;
+    const { data: existing } = await supabase.from('region_alert_likes').select('id').eq('alert_id', alertId).eq('user_id', userId).maybeSingle();
+    let liked: boolean;
+    if (existing) {
+      await supabase.from('region_alert_likes').delete().eq('id', existing.id);
+      liked = false;
+    } else {
+      const { error } = await supabase.from('region_alert_likes').insert({ alert_id: alertId, user_id: userId });
+      if (error && (error as any).code !== '23505') throw error;
+      liked = true;
+    }
+    const { count } = await supabase.from('region_alert_likes').select('id', { count: 'exact', head: true }).eq('alert_id', alertId);
+    await supabase.from('region_alerts').update({ likes_count: count ?? 0 }).eq('id', alertId);
+    res.json({ liked, likes_count: count ?? 0 });
+  })
+);
+
+// POST /region-alerts/:id/report — denuncia; muitas denúncias desativam e vão ao admin.
+app.post(
+  '/region-alerts/:id/report',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const alertId = req.params.id;
+    const { reason } = req.body ?? {};
+    const { data: alert } = await supabase.from('region_alerts').select('id, tutor_id, status').eq('id', alertId).maybeSingle();
+    if (!alert) return res.status(404).json({ error: 'Alerta não encontrado' });
+    if (alert.tutor_id === userId) return res.status(400).json({ error: 'Você não pode denunciar seu próprio alerta' });
+
+    const { data: dup } = await supabase.from('reports').select('id').eq('region_alert_id', alertId).eq('reporter_id', userId).maybeSingle();
+    if (dup) return res.status(409).json({ error: 'Você já denunciou este alerta' });
+
+    const { error: insErr } = await supabase.from('reports').insert({
+      reporter_id: userId, reported_id: alert.tutor_id, region_alert_id: alertId,
+      reason: reason ? String(reason).slice(0, 500) : 'Denúncia de alerta de região', status: 'pending',
+    });
+    if (insErr) {
+      // 23505 = índice único (region_alert_id, reporter_id): denúncia duplicada em corrida.
+      if ((insErr as { code?: string }).code === '23505') return res.status(409).json({ error: 'Você já denunciou este alerta' });
+      throw insErr;
+    }
+
+    // Conta só denúncias ABERTAS (pending/reviewing): as já descartadas pela moderação
+    // não recontam, senão a reativação do admin seria anulada por 1 nova denúncia.
+    const { count } = await supabase.from('reports').select('id', { count: 'exact', head: true })
+      .eq('region_alert_id', alertId).in('status', ['pending', 'reviewing']);
+    const reportsCount = count ?? 0;
+    await supabase.from('region_alerts').update({ reports_count: reportsCount }).eq('id', alertId);
+
+    const cfg = await getRegionAlertConfig();
+    let deactivated = false;
+    if (reportsCount >= cfg.reportsToDeactivate && alert.status === 'active') {
+      await supabase.from('region_alerts').update({ status: 'deactivated' }).eq('id', alertId);
+      await supabase.from('reports').update({ status: 'reviewing' }).eq('region_alert_id', alertId).eq('status', 'pending');
+      await notifyUser(alert.tutor_id, {
+        title: 'Alerta de região desativado',
+        body: 'Seu alerta recebeu denúncias e está em análise pela moderação.',
+        type: 'region_alert_paused', pet_id: null, region_alert_id: alertId,
+      });
+      deactivated = true;
+    }
+    res.json({ success: true, reportsCount, deactivated });
+  })
+);
+
+// POST /me/location — persiste a última localização (SÓ com opt-in de alertas de região).
+app.post(
+  '/me/location',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ error: 'lat e lng obrigatórios' });
+    const { data: us } = await supabase.from('user_settings').select('region_alerts_enabled').eq('user_id', userId).maybeSingle();
+    if (!us?.region_alerts_enabled) return res.json({ stored: false });
+    await supabase.from('user_settings').update({ last_lat: lat, last_lng: lng, last_location_at: new Date().toISOString() }).eq('user_id', userId);
+    res.json({ stored: true });
+  })
+);
+
 Sentry.setupExpressErrorHandler(app);
 
 app.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {

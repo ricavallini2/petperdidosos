@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserSettings, updateUserSettings } from '../../services/api';
+import * as Location from 'expo-location';
+import { getUserSettings, updateUserSettings, updateMyLocation } from '../../services/api';
 import { toast } from '../../components/Feedback';
 
 type Channel = 'email' | 'whatsapp' | 'both' | 'none';
@@ -39,6 +40,7 @@ export default function SettingsScreen() {
   const [radius, setRadius] = useState(5000);
   const [travel, setTravel] = useState<TravelMode>('driving');
   const [pinColor, setPinColor] = useState(DEFAULT_PIN_COLOR);
+  const [regionAlerts, setRegionAlerts] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -50,6 +52,7 @@ export default function SettingsScreen() {
           setRadius(Number(s.default_search_radius_m ?? 5000));
           setTravel(s.travel_mode ?? 'driving');
           setPinColor(s.pin_color ?? DEFAULT_PIN_COLOR);
+          setRegionAlerts(!!s.region_alerts_enabled);
         }
       } catch (e) {
         console.warn('Erro ao carregar config', e);
@@ -68,6 +71,24 @@ export default function SettingsScreen() {
       toast.error(e?.message ?? 'Tente novamente.', 'Erro ao salvar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleRegionAlerts = async (v: boolean) => {
+    setRegionAlerts(v);
+    await persist({ region_alerts_enabled: v });
+    if (v) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          await updateMyLocation(loc.coords.latitude, loc.coords.longitude);
+        } else {
+          toast.warning('Ative a localização para receber alertas da sua região.');
+        }
+      } catch {
+        // silencioso — o alerta é best-effort
+      }
     }
   };
 
@@ -118,6 +139,25 @@ export default function SettingsScreen() {
               <Text style={[styles.optionLabel, channel === c.value && styles.optionLabelActive]}>{c.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Alertas de pets perdidos na região (opt-in) */}
+        <Text style={styles.sectionTitle}>Alertas da minha região</Text>
+        <View style={styles.raCard}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.raTitle}>Avisar sobre pets perdidos perto de mim</Text>
+            <Text style={styles.raSub}>
+              Você recebe um aviso quando um tutor destacar um pet perdido na sua região.
+              Usa sua localização (guardada só enquanto isto estiver ligado).
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggle, regionAlerts && styles.toggleOn]}
+            activeOpacity={0.8}
+            onPress={() => toggleRegionAlerts(!regionAlerts)}
+          >
+            <View style={[styles.toggleDot, regionAlerts && styles.toggleDotOn]} />
+          </TouchableOpacity>
         </View>
 
         {/* Raio padrão */}
@@ -220,6 +260,14 @@ const styles = StyleSheet.create({
   optionCardActive: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
   optionLabel: { fontSize: 14, color: '#2F3542', fontWeight: '700' },
   optionLabelActive: { color: '#FFF' },
+
+  raCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
+  raTitle: { fontSize: 15, color: '#2F3542', fontWeight: '800', marginBottom: 3 },
+  raSub: { fontSize: 12.5, color: '#747D8C', lineHeight: 17 },
+  toggle: { width: 52, height: 30, borderRadius: 15, backgroundColor: '#DFE4EA', justifyContent: 'center', padding: 3 },
+  toggleOn: { backgroundColor: '#2ED573' },
+  toggleDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF' },
+  toggleDotOn: { transform: [{ translateX: 22 }] },
 
   radiusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   radiusPill: {

@@ -121,6 +121,9 @@ export interface AppSettings {
   matchRadiusM?: number;   // raio de busca em metros
   donationPixKey?: string | null; // doação voluntária (externa)
   donationUrl?: string | null;
+  regionAlertRadiusM?: number;             // raio do alerta de região (metros)
+  regionAlertCooldownH?: number;           // intervalo mínimo entre alertas (horas)
+  regionAlertReportsToDeactivate?: number; // nº de denúncias para desativar
 }
 
 export interface AdminUserRow {
@@ -487,6 +490,7 @@ export interface ReportRow {
   reporter: { id: string; full_name: string | null };
   reported: { id: string; full_name: string | null };
   pet: { id: string; name: string | null } | null;
+  region_alert_id?: string | null;
 }
 
 export interface ReportsPage {
@@ -513,6 +517,25 @@ export interface ReportProfile {
   email: string | null;
 }
 
+export interface ReportRegionAlert {
+  id: string;
+  pet_id: string | null;
+  tutor_id: string;
+  comment: string | null;
+  status: string; // 'active' | 'deactivated'
+  reports_count: number | null;
+  likes_count: number | null;
+  radius_m: number | null;
+  created_at: string;
+  pet: {
+    id: string;
+    name: string | null;
+    type: string;
+    status: string;
+    main_photo_url: string | null;
+  } | null;
+}
+
 export interface ReportDetail {
   report: {
     id: string;
@@ -520,6 +543,7 @@ export interface ReportDetail {
     reported_id: string;
     chat_id: string | null;
     pet_id: string | null;
+    region_alert_id: string | null;
     reason: string;
     status: string;
     admin_notes: string | null;
@@ -542,6 +566,7 @@ export interface ReportDetail {
     photo_url: string | null;
     created_at: string;
   }[];
+  regionAlert?: ReportRegionAlert | null;
 }
 
 export interface ReportPatch {
@@ -727,6 +752,9 @@ export const api = {
     matchRadiusM?: number;
     donationPixKey?: string;
     donationUrl?: string;
+    regionAlertRadiusM?: number;
+    regionAlertCooldownH?: number;
+    regionAlertReportsToDeactivate?: number;
   }): Promise<AppSettings> =>
     authFetch('/admin/settings', {
       method: 'POST',
@@ -882,4 +910,8 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
+
+  // Alerta de região — reativa (após revisão) o alerta desativado por denúncias.
+  reactivateRegionAlert: (alertId: string): Promise<{ success: boolean }> =>
+    authFetch(`/admin/region-alerts/${alertId}/reactivate`, { method: 'POST' }),
 };

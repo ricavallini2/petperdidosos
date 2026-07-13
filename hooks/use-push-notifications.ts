@@ -97,6 +97,16 @@ export function usePushNotifications() {
       router.push(`/meu-pet/${data.meuPetId}` as Href);
       return;
     }
+    // Alerta de região → tela do alerta.
+    if (type === 'region_alert' && (data.alert_id || data.region_alert_id)) {
+      router.push(`/region-alert/${data.alert_id ?? data.region_alert_id}` as Href);
+      return;
+    }
+    // Alerta pausado (moderação) → perfil do tutor ("Ver meus alertas"), igual ao in-app.
+    if (type === 'region_alert_paused') {
+      router.push('/(tabs)/profile' as Href);
+      return;
+    }
     // Fallback: tela de Notificações.
     router.push('/profile/notifications');
   }, [router]);

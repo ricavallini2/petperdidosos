@@ -172,7 +172,9 @@ export function Denuncias() {
                 <td>{r.reporter.full_name ?? '—'}</td>
                 <td>{r.reported.full_name ?? '—'}</td>
                 <td>
-                  {r.pet ? `Caso: ${r.pet.name ?? '—'}` : r.chat_id ? 'Chat' : <span className="muted-text">—</span>}
+                  {r.region_alert_id
+                    ? <span className="badge rep-reviewing">Alerta de região</span>
+                    : r.pet ? `Caso: ${r.pet.name ?? '—'}` : r.chat_id ? 'Chat' : <span className="muted-text">—</span>}
                 </td>
                 <td>
                   <span className={`badge rep-${r.status}`}>

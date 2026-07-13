@@ -10,9 +10,14 @@ export function Configuracoes() {
   const [savedThresh, setSavedThresh] = useState<number | null>(null);
   const [savedRadius, setSavedRadius] = useState<number | null>(null);
 
+  const [raRadiusKm, setRaRadiusKm] = useState('');
+  const [raCooldownH, setRaCooldownH] = useState('');
+  const [raReports, setRaReports] = useState('');
+
   const [loading, setLoading] = useState(true);
   const [savingDonation, setSavingDonation] = useState(false);
   const [savingMatch, setSavingMatch] = useState(false);
+  const [savingRegion, setSavingRegion] = useState(false);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
 
@@ -30,6 +35,9 @@ export function Configuracoes() {
           setSavedRadius(s.matchRadiusM);
           setRadiusKm(String(Number((s.matchRadiusM / 1000).toFixed(1))));
         }
+        if (s.regionAlertRadiusM != null) setRaRadiusKm(String(Number((s.regionAlertRadiusM / 1000).toFixed(2))));
+        if (s.regionAlertCooldownH != null) setRaCooldownH(String(s.regionAlertCooldownH));
+        if (s.regionAlertReportsToDeactivate != null) setRaReports(String(s.regionAlertReportsToDeactivate));
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Falha ao carregar'))
       .finally(() => setLoading(false));
@@ -85,6 +93,42 @@ export function Configuracoes() {
       setError(e instanceof Error ? e.message : 'Falha ao salvar');
     } finally {
       setSavingMatch(false);
+    }
+  };
+
+  const saveRegionAlert = async () => {
+    setError('');
+    setOk('');
+    const km = Number(raRadiusKm.replace(',', '.'));
+    const h = Number(raCooldownH.replace(',', '.'));
+    const n = Number(raReports.replace(',', '.'));
+    if (!Number.isFinite(km) || km < 0.5 || km > 200) {
+      setError('O raio do alerta deve estar entre 0,5 e 200 km.');
+      return;
+    }
+    if (!Number.isInteger(h) || h < 1 || h > 168) {
+      setError('O intervalo entre alertas deve ser um número inteiro de horas entre 1 e 168.');
+      return;
+    }
+    if (!Number.isInteger(n) || n < 1 || n > 100) {
+      setError('As denúncias para desativar devem ser um número inteiro entre 1 e 100.');
+      return;
+    }
+    setSavingRegion(true);
+    try {
+      const res = await api.updateSettings({
+        regionAlertRadiusM: Math.round(km * 1000),
+        regionAlertCooldownH: h,
+        regionAlertReportsToDeactivate: n,
+      });
+      if (res.regionAlertRadiusM != null) setRaRadiusKm(String(Number((res.regionAlertRadiusM / 1000).toFixed(2))));
+      if (res.regionAlertCooldownH != null) setRaCooldownH(String(res.regionAlertCooldownH));
+      if (res.regionAlertReportsToDeactivate != null) setRaReports(String(res.regionAlertReportsToDeactivate));
+      setOk('Alerta de região atualizado com sucesso.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar');
+    } finally {
+      setSavingRegion(false);
     }
   };
 
@@ -180,6 +224,62 @@ export function Configuracoes() {
               </p>
             )}
           </>
+        )}
+      </section>
+
+      <section className="fin-section">
+        <h2>Alerta de região</h2>
+        <p className="muted-text" style={{ marginBottom: 14 }}>
+          Quando um tutor destaca um pet perdido, avisamos os buscadores próximos (push + no app).
+          O <strong>raio</strong> define quem recebe; o <strong>intervalo</strong> limita quantas vezes
+          o mesmo caso pode ser destacado; as <strong>denúncias</strong> desativam o alerta e o enviam
+          para revisão do administrativo.
+        </p>
+
+        {loading ? (
+          <p className="muted-text">Carregando…</p>
+        ) : (
+          <div className="setting-card">
+            <label className="setting-field">
+              Raio do alerta (km)
+              <input
+                type="number"
+                min={0.5}
+                max={200}
+                step={0.5}
+                value={raRadiusKm}
+                onChange={(e) => { setRaRadiusKm(e.target.value); setOk(''); }}
+                disabled={savingRegion}
+              />
+            </label>
+            <label className="setting-field">
+              Intervalo mínimo entre alertas (horas)
+              <input
+                type="number"
+                min={1}
+                max={168}
+                step={1}
+                value={raCooldownH}
+                onChange={(e) => { setRaCooldownH(e.target.value); setOk(''); }}
+                disabled={savingRegion}
+              />
+            </label>
+            <label className="setting-field">
+              Denúncias para desativar
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={raReports}
+                onChange={(e) => { setRaReports(e.target.value); setOk(''); }}
+                disabled={savingRegion}
+              />
+            </label>
+            <button className="btn-save" onClick={saveRegionAlert} disabled={savingRegion}>
+              {savingRegion ? 'Salvando…' : 'Salvar'}
+            </button>
+          </div>
         )}
       </section>
 

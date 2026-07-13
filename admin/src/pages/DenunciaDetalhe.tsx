@@ -74,6 +74,7 @@ export function DenunciaDetalhe() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -107,6 +108,21 @@ export function DenunciaDetalhe() {
       toast.error(e instanceof Error ? e.message : 'Falha ao salvar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const reactivate = async () => {
+    const ra = data?.regionAlert;
+    if (!ra) return;
+    setReactivating(true);
+    try {
+      await api.reactivateRegionAlert(ra.id);
+      toast.success('Alerta reativado. Denúncias descartadas.');
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha ao reativar o alerta');
+    } finally {
+      setReactivating(false);
     }
   };
 
@@ -184,6 +200,57 @@ export function DenunciaDetalhe() {
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {data.regionAlert && (
+        <section className="fin-section">
+          <h2>Alerta de região denunciado</h2>
+          <div className="stat-card">
+            <div className="user-cell">
+              {data.regionAlert.pet?.main_photo_url ? (
+                <img src={data.regionAlert.pet.main_photo_url} alt="" className="avatar" />
+              ) : (
+                <span className="avatar avatar-empty">
+                  {(data.regionAlert.pet?.name ?? '?').charAt(0)}
+                </span>
+              )}
+              <div>
+                <div className="user-name">{data.regionAlert.pet?.name ?? 'Pet'}</div>
+                <div className="detail-badges" style={{ marginTop: 4 }}>
+                  <span className={`badge rep-${data.regionAlert.status === 'active' ? 'dismissed' : 'reviewing'}`}>
+                    {data.regionAlert.status === 'active' ? 'Ativo' : 'Desativado'}
+                  </span>
+                  <span className="badge">{data.regionAlert.reports_count ?? 0} denúncias</span>
+                  <span className="badge">{data.regionAlert.likes_count ?? 0} curtidas</span>
+                </div>
+              </div>
+            </div>
+            {data.regionAlert.comment && (
+              <p className="muted-text" style={{ marginTop: 10, fontStyle: 'italic' }}>
+                “{data.regionAlert.comment}”
+              </p>
+            )}
+            <p className="muted-text" style={{ marginTop: 6 }}>
+              Raio {((data.regionAlert.radius_m ?? 10000) / 1000).toFixed(1)} km · disparado em{' '}
+              {fmtDateTime(data.regionAlert.created_at)}
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+              {data.regionAlert.pet && (
+                <button
+                  className="btn-mini btn-clear"
+                  onClick={() => navigate(`/casos/${data.regionAlert!.pet!.id}`)}
+                >
+                  Ver caso
+                </button>
+              )}
+              {data.regionAlert.status !== 'active' && (
+                <button className="btn-save" onClick={reactivate} disabled={reactivating}>
+                  {reactivating ? 'Reativando…' : 'Reativar alerta'}
+                </button>
+              )}
             </div>
           </div>
         </section>

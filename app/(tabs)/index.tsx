@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot from 'react-native-view-shot';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, reportPet, claimSighting, getPetSightings, getPublicProfile, getNotifications, PET_REPORT_REASONS, PetSighting } from '../../services/api';
+import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, reportPet, claimSighting, getPetSightings, getPublicProfile, getNotifications, updateMyLocation, PET_REPORT_REASONS, PetSighting } from '../../services/api';
 import { COMPLETE_PROFILE_KEY } from '../login';
 import { useSearcherPresence } from '../../hooks/use-searcher-presence';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { customMapStyle } from '../../constants/mapStyle';
 import { Avatar } from '../../components/Avatar';
 import { toast, showConfirm, showActionSheet } from '../../components/Feedback';
+import { RegionAlertBanner } from '../../components/RegionAlertBanner';
 import { formatDistance } from '../../utils/formatDistance';
 import { colorMatches } from '../../utils/colorMatch';
 import { consumeMapFocus } from '../../utils/mapFocus';
@@ -197,6 +198,25 @@ const ClusterMarker = React.memo(function ClusterMarker({
 
 export default function MapScreen() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
+  // Persiste a localização (o backend só grava se o opt-in de alertas de região
+  // estiver ligado) — mantém a mira do push fresca. Throttle de 15 min.
+  const lastLocPushRef = useRef(0);
+  useEffect(() => {
+    if (!location) return;
+    const now = Date.now();
+    if (now - lastLocPushRef.current < 15 * 60 * 1000) return;
+    lastLocPushRef.current = now;
+    updateMyLocation(location.coords.latitude, location.coords.longitude);
+  }, [location]);
+
+  // Localização estável para o banner Via B: arredonda ~11m e memoiza, para o poll
+  // de 60s não remontar a cada re-render do mapa (setCurrentRegion, captura de ícones).
+  const bannerLat = location ? Math.round(location.coords.latitude * 1e4) / 1e4 : null;
+  const bannerLng = location ? Math.round(location.coords.longitude * 1e4) / 1e4 : null;
+  const bannerLocation = useMemo(
+    () => (bannerLat != null && bannerLng != null ? { latitude: bannerLat, longitude: bannerLng } : null),
+    [bannerLat, bannerLng],
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedPet, setSelectedPet] = useState<PetSighting | null>(null);
   const [cardOpen, setCardOpen] = useState(false);
@@ -1507,6 +1527,9 @@ export default function MapScreen() {
               );
             })}
           </ScrollView>
+        </View>
+        <View style={{ marginTop: 8 }}>
+          <RegionAlertBanner location={bannerLocation} />
         </View>
       </View>
 

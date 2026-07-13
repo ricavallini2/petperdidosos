@@ -17,6 +17,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { supabase } from '../../../services/supabase';
 import { prepareForUpload } from '../../../services/upload';
 import { getPetDetails, updatePet, increaseReward, PetSize, PetSex, PetAgeGroup, PetType } from '../../../services/api';
+import { RegionAlertButton } from '../../../components/RegionAlertButton';
 import { toast } from '../../../components/Feedback';
 
 // Metadados por tipo de alerta (cor/título/rótulos) — espelha a tela de criar.
@@ -531,6 +532,13 @@ export default function EditPetScreen() {
             )}
           </View>
           </>)}
+
+          {type === 'lost' && (
+            <>
+              <Text style={styles.sectionTitle}>Alertar a região</Text>
+              <RegionAlertButton petId={String(petId)} />
+            </>
+          )}
 
           <TouchableOpacity style={[styles.submitWrapper, { shadowColor: accent }]} activeOpacity={0.9} onPress={handleSave} disabled={saving}>
             <LinearGradient

@@ -14,6 +14,7 @@ import { fetchNearbyPets, getUserSettings, PetSighting, PetType, PetSpecies } fr
 import { useAuth } from '../../contexts/AuthContext';
 import { showActionSheet, toast } from '../../components/Feedback';
 import { CollapsibleFilters } from '../../components/CollapsibleFilters';
+import { RegionAlertBanner } from '../../components/RegionAlertBanner';
 import { formatDistance } from '../../utils/formatDistance';
 import { colorMatches } from '../../utils/colorMatch';
 import { requestMapFocus } from '../../utils/mapFocus';
@@ -271,6 +272,10 @@ export default function AlertasScreen() {
         <Text style={styles.headerTitle}>Alertas</Text>
         <Text style={styles.headerSub}>Pets na sua região</Text>
       </LinearGradient>
+
+      <View style={{ marginTop: 8 }}>
+        <RegionAlertBanner location={searchCenter ?? location} />
+      </View>
 
       {/* Filtros recolhíveis */}
       <CollapsibleFilters accentColor="#FF4757">
