@@ -112,7 +112,7 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior="padding">
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <LinearGradient
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}

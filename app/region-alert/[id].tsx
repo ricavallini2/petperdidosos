@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator,
+  StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,8 @@ import { getRegionAlert, likeRegionAlert, reportRegionAlert, markRegionAlertSeen
 import { toast, showConfirm, showActionSheet } from '../../components/Feedback';
 import { Avatar } from '../../components/Avatar';
 import { requestMapFocus } from '../../utils/mapFocus';
+import { ZoomableImage } from '../../components/ZoomableImage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SPECIES_LABEL: Record<string, string> = { cachorro: 'Cachorro', gato: 'Gato', passaro: 'Pássaro', outro: 'Outro' };
 const REPORT_REASONS = [
@@ -27,6 +29,8 @@ export default function RegionAlertScreen() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [liking, setLiking] = useState(false);
+  const [heroZooming, setHeroZooming] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -115,23 +119,23 @@ export default function RegionAlertScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView showsVerticalScrollIndicator={false} scrollEnabled={!heroZooming} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Hero */}
         <View style={styles.hero}>
           {pet?.main_photo_url ? (
-            <Image source={{ uri: pet.main_photo_url }} style={styles.heroImg} />
+            <ZoomableImage source={{ uri: pet.main_photo_url }} style={styles.heroImg} resizeMode="cover" onZoomStart={() => setHeroZooming(true)} onZoomEnd={() => setHeroZooming(false)} />
           ) : (
             <LinearGradient colors={['#FF6B81', '#FF4757']} style={styles.heroImg} />
           )}
-          <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.7)']} style={StyleSheet.absoluteFill} />
-          <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+          <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.7)']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+          <TouchableOpacity style={[styles.back, { top: insets.top + 8 }]} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <View style={styles.heroBadge}>
+          <View style={[styles.heroBadge, { top: insets.top + 14 }]} pointerEvents="none">
             <Ionicons name="megaphone" size={13} color="#FFF" />
             <Text style={styles.heroBadgeText}>Pet perdido na sua região</Text>
           </View>
-          <View style={styles.heroText}>
+          <View style={styles.heroText} pointerEvents="none">
             <Text style={styles.heroName}>{pet?.name}</Text>
             {!!info && <Text style={styles.heroInfo}>{info}</Text>}
           </View>

@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator,
+  StyleSheet, View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,6 +12,8 @@ import {
 } from '../../../services/api';
 import { cancelHealthReminder } from '../../../services/reminders';
 import { toast, showConfirm, showActionSheet } from '../../../components/Feedback';
+import { ZoomableImage } from '../../../components/ZoomableImage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SPECIES_LABEL: Record<string, string> = { cachorro: 'Cachorro', gato: 'Gato', passaro: 'Pássaro', outro: 'Outro' };
 const SIZE_LABEL: Record<string, string> = { pequeno: 'Pequeno', medio: 'Médio', grande: 'Grande' };
@@ -51,16 +53,6 @@ function daysUntil(s: string): number | null {
   return Math.round((d.getTime() - now.getTime()) / 86400000);
 }
 
-function InfoRow({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  return (
-    <View style={styles.infoRow}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue}>{value}</Text>
-    </View>
-  );
-}
-
 function NextBadge({ proxima }: { proxima: string }) {
   const d = daysUntil(proxima);
   const dateLbl = fmtDate(proxima);
@@ -83,6 +75,8 @@ export default function MeuPetDetailScreen() {
   const [pet, setPet] = useState<MyPetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [heroZooming, setHeroZooming] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -188,24 +182,41 @@ export default function MeuPetDetailScreen() {
     .join(' · ');
   const records = pet.health_records ?? [];
 
+  // Ficha premium: destaques glanceáveis (identidade) + linhas detalhadas com ícone.
+  type Tile = { icon: any; tint: string; bg: string; label: string; value: string };
+  const age = ageLabel(pet.birth_date);
+  const highlights: Tile[] = [];
+  if (pet.species) highlights.push({ icon: 'paw', tint: '#5AA9FF', bg: '#EAF3FE', label: 'Espécie', value: SPECIES_LABEL[pet.species] ?? pet.species });
+  if (pet.sex && SEX_LABEL[pet.sex]) highlights.push({ icon: pet.sex === 'femea' ? 'female' : 'male', tint: pet.sex === 'femea' ? '#FF6B81' : '#5AA9FF', bg: pet.sex === 'femea' ? '#FFECF0' : '#EAF3FE', label: 'Sexo', value: SEX_LABEL[pet.sex] });
+  if (age) highlights.push({ icon: 'sparkles', tint: '#FFA502', bg: '#FFF4E0', label: 'Idade', value: age });
+  if (pet.size) highlights.push({ icon: 'resize', tint: '#A55EEA', bg: '#F3ECFD', label: 'Porte', value: SIZE_LABEL[pet.size] ?? pet.size });
+
+  const infoItems: Tile[] = [];
+  if (pet.breed) infoItems.push({ icon: 'ribbon-outline', tint: '#5AA9FF', bg: '#EAF3FE', label: 'Raça', value: pet.breed });
+  if (pet.color) infoItems.push({ icon: 'color-palette-outline', tint: '#A55EEA', bg: '#F3ECFD', label: 'Cor', value: pet.color });
+  const birthLbl = fmtDate(pet.birth_date);
+  if (birthLbl) infoItems.push({ icon: 'calendar-outline', tint: '#FFA502', bg: '#FFF4E0', label: 'Nascimento', value: birthLbl });
+  infoItems.push({ icon: 'cut-outline', tint: '#26de81', bg: '#E8FBF1', label: 'Castrado', value: pet.neutered ? 'Sim' : 'Não' });
+  if (pet.microchip) infoItems.push({ icon: 'hardware-chip-outline', tint: '#8E99A8', bg: '#F1F2F6', label: 'Microchip', value: pet.microchip });
+
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} scrollEnabled={!heroZooming}>
         {/* Hero */}
         <View style={styles.hero}>
           {pet.main_photo_url ? (
-            <Image source={{ uri: pet.main_photo_url }} style={styles.heroImg} />
+            <ZoomableImage source={{ uri: pet.main_photo_url }} style={styles.heroImg} resizeMode="cover" onZoomStart={() => setHeroZooming(true)} onZoomEnd={() => setHeroZooming(false)} />
           ) : (
             <LinearGradient colors={['#FF6B81', '#FF4757']} style={styles.heroImg} />
           )}
-          <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.65)']} style={StyleSheet.absoluteFill} />
-          <TouchableOpacity style={styles.heroBack} onPress={() => router.back()}>
+          <LinearGradient colors={['rgba(0,0,0,0.35)', 'transparent', 'rgba(0,0,0,0.65)']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+          <TouchableOpacity style={[styles.heroBack, { top: insets.top + 8 }]} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.heroEdit} onPress={() => router.push(`/meu-pet/${id}/editar` as Href)}>
+          <TouchableOpacity style={[styles.heroEdit, { top: insets.top + 8 }]} onPress={() => router.push(`/meu-pet/${id}/editar` as Href)}>
             <Ionicons name="pencil" size={18} color="#FFF" />
           </TouchableOpacity>
-          <View style={styles.heroTextWrap}>
+          <View style={styles.heroTextWrap} pointerEvents="none">
             <Text style={styles.heroName}>{pet.name}</Text>
             {!!subtitle && <Text style={styles.heroSub}>{subtitle}</Text>}
           </View>
@@ -222,24 +233,50 @@ export default function MeuPetDetailScreen() {
 
           {/* Ficha */}
           <Text style={styles.sectionTitle}>Ficha</Text>
-          <View style={styles.infoCard}>
-            <InfoRow label="Espécie" value={pet.species ? SPECIES_LABEL[pet.species] : null} />
-            <InfoRow label="Raça" value={pet.breed} />
-            <InfoRow label="Cor" value={pet.color} />
-            <InfoRow label="Porte" value={pet.size ? SIZE_LABEL[pet.size] : null} />
-            <InfoRow label="Sexo" value={pet.sex ? SEX_LABEL[pet.sex] : null} />
-            <InfoRow label="Idade" value={ageLabel(pet.birth_date)} />
-            <InfoRow label="Nascimento" value={fmtDate(pet.birth_date)} />
-            <InfoRow label="Microchip" value={pet.microchip} />
-            <InfoRow label="Castrado" value={pet.neutered ? 'Sim' : 'Não'} />
-            <InfoRow label="Saúde" value={pet.health_notes} />
-          </View>
+          {highlights.length > 0 && (
+            <View style={styles.highlightRow}>
+              {highlights.map((h) => (
+                <View key={h.label} style={styles.highlightTile}>
+                  <View style={[styles.highlightIcon, { backgroundColor: h.bg }]}>
+                    <Ionicons name={h.icon} size={17} color={h.tint} />
+                  </View>
+                  <Text style={styles.highlightValue} numberOfLines={1}>{h.value}</Text>
+                  <Text style={styles.highlightLabel}>{h.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {infoItems.length > 0 && (
+            <View style={styles.infoCard}>
+              {infoItems.map((it, idx) => (
+                <View key={it.label} style={[styles.infoRow, idx === infoItems.length - 1 && styles.infoRowLast]}>
+                  <View style={[styles.infoIcon, { backgroundColor: it.bg }]}>
+                    <Ionicons name={it.icon} size={15} color={it.tint} />
+                  </View>
+                  <Text style={styles.infoLabel}>{it.label}</Text>
+                  <Text style={styles.infoValue} numberOfLines={2}>{it.value}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {!!pet.health_notes && (
+            <View style={styles.healthNote}>
+              <View style={styles.healthNoteIcon}>
+                <Ionicons name="heart" size={16} color="#FF6B81" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.healthNoteLabel}>Saúde</Text>
+                <Text style={styles.healthNoteText}>{pet.health_notes}</Text>
+              </View>
+            </View>
+          )}
 
           {/* Carteirinha */}
           <View style={styles.carteirinhaHeader}>
-            <Text style={styles.sectionTitle}>Carteirinha de saúde</Text>
+            <Text style={styles.carteirinhaTitle}>Carteirinha de saúde</Text>
             <TouchableOpacity
               style={styles.addRecordBtn}
+              activeOpacity={0.85}
               onPress={() => router.push(`/meu-pet/${id}/saude/novo?petName=${encodeURIComponent(pet.name)}` as Href)}
             >
               <Ionicons name="add" size={18} color="#FFF" />
@@ -322,16 +359,39 @@ const styles = StyleSheet.create({
   lostHint: { fontSize: 12.5, color: '#A4B0BE', marginTop: 8, marginLeft: 4, marginBottom: 4 },
 
   sectionTitle: { fontSize: 17, fontWeight: '800', color: '#2F3542', marginTop: 18, marginBottom: 12 },
-  infoCard: {
-    backgroundColor: '#FFF', borderRadius: 18, paddingHorizontal: 18, paddingVertical: 4,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2,
+  highlightRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  highlightTile: {
+    flex: 1, backgroundColor: '#FFF', borderRadius: 18, paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center',
+    shadowColor: '#8A94A6', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 2,
   },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ECECEC' },
-  infoLabel: { fontSize: 14, color: '#747D8C', fontWeight: '600' },
-  infoValue: { fontSize: 14.5, color: '#2F3542', fontWeight: '700', flexShrink: 1, textAlign: 'right', marginLeft: 16 },
+  highlightIcon: { width: 40, height: 40, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginBottom: 9 },
+  highlightValue: { fontSize: 14, fontWeight: '800', color: '#2F3542', textAlign: 'center' },
+  highlightLabel: { fontSize: 11, fontWeight: '700', color: '#A4B0BE', marginTop: 3 },
 
-  carteirinhaHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  addRecordBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FF4757', paddingHorizontal: 14, height: 38, borderRadius: 12, marginTop: 6 },
+  infoCard: {
+    backgroundColor: '#FFF', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 4,
+    shadowColor: '#8A94A6', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 2,
+  },
+  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#F0F1F4' },
+  infoRowLast: { borderBottomWidth: 0 },
+  infoIcon: { width: 30, height: 30, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  infoLabel: { fontSize: 14, color: '#747D8C', fontWeight: '600' },
+  infoValue: { flex: 1, fontSize: 14.5, color: '#2F3542', fontWeight: '700', textAlign: 'right', marginLeft: 16 },
+
+  healthNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF4F6',
+    borderRadius: 18, padding: 14, marginTop: 12, borderWidth: 1, borderColor: '#FFE1E7',
+  },
+  healthNoteIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: '#FFE1E7', justifyContent: 'center', alignItems: 'center' },
+  healthNoteLabel: { fontSize: 11, fontWeight: '800', color: '#FF6B81', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 2 },
+  healthNoteText: { fontSize: 14, color: '#2F3542', fontWeight: '600', lineHeight: 19 },
+
+  carteirinhaHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 12 },
+  carteirinhaTitle: { fontSize: 17, fontWeight: '800', color: '#2F3542' },
+  addRecordBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FF4757', paddingHorizontal: 14, height: 36, borderRadius: 13,
+    shadowColor: '#FF4757', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 8, elevation: 4,
+  },
   addRecordText: { color: '#FFF', fontWeight: '800', fontSize: 13.5 },
   emptyRecords: {
     backgroundColor: '#FFF', borderRadius: 18, padding: 22, alignItems: 'center', gap: 10,

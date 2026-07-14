@@ -9,6 +9,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { getTransactions, getUserProfile, requestWithdraw, Transaction } from '../../services/api';
 import { toast } from '../../components/Feedback';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -39,6 +40,7 @@ export default function WalletScreen() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
+  const insets = useSafeAreaInsets();
   const load = useCallback(async () => {
     if (!user) return;
     try {
@@ -224,7 +226,7 @@ export default function WalletScreen() {
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={[styles.txAmount, { color: amountColor }]}>
-            {amountPrefix}R$ {displayAmount.toFixed(2)}
+            {amountPrefix}R$ {displayAmount.toFixed(2).replace('.', ',')}
           </Text>
           {item.status !== 'completed' && (
             <Text style={[styles.txStatus, { color: item.status === 'pending' ? '#FFA502' : '#FF4757' }]}>
@@ -242,7 +244,7 @@ export default function WalletScreen() {
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
@@ -268,11 +270,11 @@ export default function WalletScreen() {
                 style={styles.balanceCard}
               >
                 <Text style={styles.balanceLabel}>Saldo disponível</Text>
-                <Text style={styles.balanceValue}>R$ {balance.toFixed(2)}</Text>
+                <Text style={styles.balanceValue}>R$ {balance.toFixed(2).replace('.', ',')}</Text>
                 <View style={styles.balanceFooter}>
                   <View>
                     <Text style={styles.balanceSubLabel}>Recompensas recebidas</Text>
-                    <Text style={styles.balanceSubValue}>R$ {totalReceived.toFixed(2)}</Text>
+                    <Text style={styles.balanceSubValue}>R$ {totalReceived.toFixed(2).replace('.', ',')}</Text>
                   </View>
                   <TouchableOpacity
                     style={[styles.withdrawBtn, balance <= 0 && { opacity: 0.5 }]}
@@ -292,7 +294,7 @@ export default function WalletScreen() {
                     <Ionicons name="lock-closed" size={18} color="#FFA502" />
                   </View>
                   <Text style={styles.miniCardLabel}>Saldo reservado</Text>
-                  <Text style={styles.miniCardValue}>R$ {escrowActive.toFixed(2)}</Text>
+                  <Text style={styles.miniCardValue}>R$ {escrowActive.toFixed(2).replace('.', ',')}</Text>
                   <Text style={styles.miniCardSub}>Em recompensas ativas</Text>
                 </View>
                 <View style={[styles.miniCard, { borderLeftWidth: 1, borderLeftColor: '#F1F2F6' }]}>
@@ -300,7 +302,7 @@ export default function WalletScreen() {
                     <Ionicons name="pricetag-outline" size={18} color="#747D8C" />
                   </View>
                   <Text style={styles.miniCardLabel}>Taxa total paga</Text>
-                  <Text style={[styles.miniCardValue, { color: '#747D8C' }]}>R$ {totalFeesPaid.toFixed(2)}</Text>
+                  <Text style={[styles.miniCardValue, { color: '#747D8C' }]}>R$ {totalFeesPaid.toFixed(2).replace('.', ',')}</Text>
                   <Text style={styles.miniCardSub}>Para o app</Text>
                 </View>
               </View>
@@ -369,7 +371,7 @@ export default function WalletScreen() {
                 <Ionicons name="pricetag" size={16} color="#747D8C" />
                 <Text style={styles.feeSectionTitle}>Taxas do app</Text>
               </View>
-              <Text style={styles.feeTotalText}>Total: R$ {totalFeesDisplay.toFixed(2)}</Text>
+              <Text style={styles.feeTotalText}>Total: R$ {totalFeesDisplay.toFixed(2).replace('.', ',')}</Text>
             </View>
 
             {feeRows.length === 0 ? (
@@ -389,7 +391,7 @@ export default function WalletScreen() {
                       <Text style={styles.txDate}>{format(new Date(fee.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</Text>
                     </View>
                     <Text style={[styles.txAmount, { color: '#747D8C' }]}>
-                      R$ {fee.amount.toFixed(2)}
+                      R$ {fee.amount.toFixed(2).replace('.', ',')}
                     </Text>
                   </View>
                   {idx < feeRows.length - 1 && <View style={{ height: 8 }} />}
@@ -402,11 +404,11 @@ export default function WalletScreen() {
 
       {/* Modal de saque */}
       <Modal visible={showWithdraw} transparent animationType="fade">
-        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Sacar via PIX</Text>
             <Text style={styles.modalSub}>
-              Disponível: <Text style={{ fontWeight: '800', color: '#2ED573' }}>R$ {balance.toFixed(2)}</Text>
+              Disponível: <Text style={{ fontWeight: '800', color: '#2ED573' }}>R$ {balance.toFixed(2).replace('.', ',')}</Text>
             </Text>
             <Text style={styles.modalLabel}>Chave PIX cadastrada</Text>
             <Text style={styles.modalPix}>{profile?.pix_key ?? 'Nenhuma'}</Text>

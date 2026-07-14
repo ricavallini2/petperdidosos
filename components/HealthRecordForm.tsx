@@ -86,14 +86,19 @@ export default function HealthRecordForm({ petId, petName, record }: Props) {
         recordId = created.id;
       }
 
-      // Agenda/reagenda o lembrete (best-effort, não trava o salvar).
-      await scheduleHealthReminder({
-        recordId,
-        meuPetId: petId,
-        petName,
-        type,
-        proximaData: input.proxima_data ?? null,
-      });
+      // Agenda/reagenda o lembrete (best-effort). NÃO pode falhar o salvar já feito,
+      // senão o usuário acha que deu erro e re-salva, duplicando o registro.
+      try {
+        await scheduleHealthReminder({
+          recordId,
+          meuPetId: petId,
+          petName,
+          type,
+          proximaData: input.proxima_data ?? null,
+        });
+      } catch (remErr) {
+        console.warn('[health-reminder] falha ao agendar (registro já salvo):', remErr);
+      }
 
       toast.success(editing ? 'Registro atualizado!' : 'Registro adicionado!');
       router.back();

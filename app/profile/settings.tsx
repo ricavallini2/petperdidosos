@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as Location from 'expo-location';
 import { getUserSettings, updateUserSettings, updateMyLocation } from '../../services/api';
 import { toast } from '../../components/Feedback';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Channel = 'email' | 'whatsapp' | 'both' | 'none';
 type TravelMode = 'walking' | 'driving' | 'bicycling' | 'transit';
@@ -33,6 +34,7 @@ const TRAVEL: { value: TravelMode; label: string; icon: any }[] = [
 export default function SettingsScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -84,10 +86,14 @@ export default function SettingsScreen() {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           await updateMyLocation(loc.coords.latitude, loc.coords.longitude);
         } else {
-          toast.warning('Ative a localização para receber alertas da sua região.');
+          // Sem permissão de localização o opt-in é inútil (o backend não grava
+          // localização) → reverte o toggle para não iludir o usuário.
+          setRegionAlerts(false);
+          await persist({ region_alerts_enabled: false });
+          toast.warning('Ative a permissão de localização para receber alertas da sua região.');
         }
       } catch {
-        // silencioso — o alerta é best-effort
+        setRegionAlerts(false);
       }
     }
   };
@@ -106,7 +112,7 @@ export default function SettingsScreen() {
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />

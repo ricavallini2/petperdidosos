@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, Dimensions, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, Dimensions, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -8,10 +8,12 @@ import { supabase } from '../../services/supabase';
 import { getUserProfile, confirmRescue, cancelPet, transformToDonation, concludeDonation } from '../../services/api';
 import { usePremium } from '../../hooks/use-premium';
 import { toast, showConfirm } from '../../components/Feedback';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const premium = usePremium();
@@ -127,7 +129,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Premium Header Profile Section */}
-      <View style={styles.headerContainer}>
+      <View style={[styles.headerContainer, { paddingTop: insets.top + 8 }]}>
         <LinearGradient
           colors={['#FF6B81', '#FF4757']}
           start={{ x: 0, y: 0 }}
@@ -269,8 +271,8 @@ export default function ProfileScreen() {
       </View>
 
       {/* Rescue Confirmation Modal */}
-      <Modal visible={showRescueModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+      <Modal visible={showRescueModal} transparent animationType="fade" onRequestClose={() => setShowRescueModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Confirmar Resgate</Text>
@@ -303,12 +305,12 @@ export default function ProfileScreen() {
               <Text style={styles.modalSubmitText}>{isConfirming ? 'Processando...' : 'Transferir Recompensa'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Transformar resgate em doação */}
       <Modal visible={!!donatePet} transparent animationType="fade" onRequestClose={() => setDonatePet(null)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Doar {donatePet?.name}</Text>
@@ -345,7 +347,7 @@ export default function ProfileScreen() {
               <Text style={styles.modalSubmitText}>{isDonating ? 'Publicando...' : 'Publicar doação'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </ScrollView>
@@ -546,7 +548,7 @@ const MenuOption = ({ icon, title, iconColor, onPress, hasBadge = false }: { ico
       <Ionicons name={icon} size={22} color={iconColor} />
     </View>
     <Text style={styles.menuOptionTitle}>{title}</Text>
-    {hasBadge && <View style={styles.menuBadge}><Text style={styles.menuBadgeText}>N</Text></View>}
+    {hasBadge && <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#FF4757', marginRight: 6 }} />}
     <Ionicons name="chevron-forward" size={20} color="#DFE4EA" />
   </TouchableOpacity>
 );

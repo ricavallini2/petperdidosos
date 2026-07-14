@@ -15,6 +15,7 @@ import { formatDistanceToNow, format, isSameDay, isToday, isYesterday } from 'da
 import { ptBR } from 'date-fns/locale';
 import { toast, showConfirm } from '../../components/Feedback';
 import { Avatar } from '../../components/Avatar';
+import { prepareForUpload } from '../../services/upload';
 
 export default function ChatScreen() {
   const { id: petId, tutorId: tutorIdParam, finderId: finderIdParam } = useLocalSearchParams();
@@ -408,13 +409,14 @@ export default function ChatScreen() {
 
     try {
       setIsSending(true);
-      const photoUri = result.assets[0].uri;
-      const ext = photoUri.substring(photoUri.lastIndexOf('.') + 1) || 'jpg';
-      const fileName = `chat_${Date.now()}.${ext}`;
+      // Redimensiona ANTES de ler base64 (senão foto 12MP estoura a heap → OOM no iOS).
+      // A saída do prepareForUpload é sempre JPEG ~1280px.
+      const photoUri = await prepareForUpload(result.assets[0].uri);
+      const fileName = `chat_${Date.now()}.jpg`;
       const base64 = await FileSystem.readAsStringAsync(photoUri, { encoding: 'base64' });
       const { error: uploadError } = await supabase.storage
         .from('pets')
-        .upload(fileName, decode(base64), { contentType: `image/${ext === 'png' ? 'png' : 'jpeg'}` });
+        .upload(fileName, decode(base64), { contentType: 'image/jpeg' });
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('pets').getPublicUrl(fileName);
       await sendMessage(petId as string, user!.id, otherId!, undefined, data.publicUrl);
@@ -545,7 +547,7 @@ export default function ChatScreen() {
 
   return (
     <Animated.View style={[styles.container, { paddingBottom: kbPad }]}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#2F3542" />
         </TouchableOpacity>
@@ -883,7 +885,7 @@ export default function ChatScreen() {
 
       {/* Modal de denúncia */}
       <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
-        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.reportHeader}>
               <View style={styles.reportIconWrap}>
@@ -935,7 +937,7 @@ export default function ChatScreen() {
       </Modal>
       {/* Modal de avaliação do buscador */}
       <Modal visible={showRatingModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {/* Cabeçalho */}
             <View style={{ alignItems: 'center', marginBottom: 4 }}>
@@ -990,7 +992,7 @@ export default function ChatScreen() {
               <Text style={styles.modalCancelText}>Pular</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Animated.View>
   );

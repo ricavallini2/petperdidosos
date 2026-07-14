@@ -8,6 +8,7 @@ import { listUserChats } from '../../services/api';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Avatar } from '../../components/Avatar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Tab = 'open' | 'closed';
 
@@ -36,6 +37,7 @@ const chatState = (c: any): { label: string; color: string; bg: string } => {
 export default function ChatsScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ tab?: string }>();
   const [tab, setTab] = useState<Tab>('open');
 
@@ -74,7 +76,7 @@ export default function ChatsScreen() {
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <Text style={styles.headerTitle}>Conversas</Text>
         <Text style={styles.headerSub}>Suas conversas com tutores e buscadores</Text>

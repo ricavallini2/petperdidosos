@@ -55,6 +55,10 @@ export function AppUpdateGate() {
       setInstalling(true);
       await Linking.openURL(info.apkUrl); // navegador baixa o APK -> usuário instala
     } catch {
+      // falha ao abrir o link do APK
+    } finally {
+      // Sempre reseta: o navegador abre e o app fica em background; ao voltar sem
+      // atualizar, o botão não pode ficar travado no spinner.
       setInstalling(false);
     }
   };

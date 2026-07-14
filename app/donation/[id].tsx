@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPetDetails } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '../../components/Feedback';
+import { ZoomableImage } from '../../components/ZoomableImage';
 
 const DONATION_COLOR = '#3B82F6';
 const { width } = Dimensions.get('window');
@@ -42,6 +43,7 @@ export default function DonationDetailScreen() {
   const [pet, setPet] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [galleryZooming, setGalleryZooming] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -91,17 +93,25 @@ export default function DonationDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 110 }}>
+      <ScrollView showsVerticalScrollIndicator={false} scrollEnabled={!galleryZooming} contentContainerStyle={{ paddingBottom: 110 }}>
         {/* Galeria */}
         <View>
           <ScrollView
             horizontal
             pagingEnabled
+            scrollEnabled={!galleryZooming}
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={(e) => setPhotoIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
           >
             {photos.map((uri, i) => (
-              <Image key={i} source={{ uri }} style={{ width, height: width * 0.9 }} />
+              <ZoomableImage
+                key={i}
+                source={{ uri }}
+                style={{ width, height: width * 0.9 }}
+                resizeMode="cover"
+                onZoomStart={() => setGalleryZooming(true)}
+                onZoomEnd={() => setGalleryZooming(false)}
+              />
             ))}
           </ScrollView>
           <LinearGradient colors={['rgba(0,0,0,0.45)', 'transparent']} style={styles.galleryTopShade} pointerEvents="none" />

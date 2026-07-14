@@ -78,15 +78,24 @@ export default function AlertasScreen() {
       if (status !== 'granted') { setLocationDenied(true); return; }
       setLocationDenied(false);
       // 1) Última posição conhecida (instantânea) → já dispara a 1ª busca rápido.
+      let got = false;
       try {
         const last = await Location.getLastKnownPositionAsync();
-        if (last) setLocation({ latitude: last.coords.latitude, longitude: last.coords.longitude });
+        if (last) { setLocation({ latitude: last.coords.latitude, longitude: last.coords.longitude }); got = true; }
       } catch {}
-      // 2) Posição atual (mais precisa) → refina em seguida.
+      // 2) Posição atual (mais precisa) → refina em seguida. Timeout de 12s para não
+      // travar em "Obtendo sua localização..." quando o GPS não obtém fix.
       try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const loc = await Promise.race<Location.LocationObject | null>([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise((resolve) => { timer = setTimeout(() => resolve(null), 12000); }),
+        ]).catch(() => null);
+        if (timer) clearTimeout(timer);
+        if (loc) { setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }); got = true; }
       } catch {}
+      // Sem nenhuma posição → mostra o estado acionável em vez de spinner infinito.
+      if (!got) setLocationDenied(true);
     })();
     if (user) {
       getUserSettings(user.id)

@@ -6,6 +6,8 @@ import ViewShot from 'react-native-view-shot';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchNearbyPets, getPetDetails, getUserProfile, getUserSettings, reportPet, claimSighting, getPetSightings, getPublicProfile, getNotifications, updateMyLocation, PET_REPORT_REASONS, PetSighting } from '../../services/api';
+import { ZoomableImage } from '../../components/ZoomableImage';
+import { SharePetButton } from '../../components/SharePetButton';
 import { COMPLETE_PROFILE_KEY } from '../login';
 import { useSearcherPresence } from '../../hooks/use-searcher-presence';
 import { Ionicons } from '@expo/vector-icons';
@@ -197,6 +199,7 @@ const ClusterMarker = React.memo(function ClusterMarker({
 });
 
 export default function MapScreen() {
+  const insets = useSafeAreaInsets();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   // Persiste a localização (o backend só grava se o opt-in de alertas de região
   // estiver ligado) — mantém a mira do push fresca. Throttle de 15 min.
@@ -359,6 +362,7 @@ export default function MapScreen() {
   const [sightingDesc, setSightingDesc] = useState<string | null>(null);
   const [sightingFinder, setSightingFinder] = useState<string | null>(null);
   const [sightingGalleryIndex, setSightingGalleryIndex] = useState(0);
+  const [sightingZooming, setSightingZooming] = useState(false);
   const [sightingDetails, setSightingDetails] = useState(false); // false = caixa de 1 clique; true = detalhes
 
 
@@ -944,6 +948,7 @@ export default function MapScreen() {
     let posSub: Location.LocationSubscription | undefined;
     let headSub: Location.LocationSubscription | undefined;
     let camLoop: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false; // evita vazar watchers/loop se o cleanup rodar antes do 1º fix de GPS
 
     let currentCenter: { latitude: number; longitude: number } | null = null;
     let gpsHeading = 0;       // curso do GPS — estável em movimento
@@ -984,6 +989,7 @@ export default function MapScreen() {
       try {
         // entrada estilo Waze: centraliza, aproxima e inclina
         const loc0 = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        if (cancelled) return;
         setLocation(loc0);
         currentCenter = { latitude: loc0.coords.latitude, longitude: loc0.coords.longitude };
         appliedLat = currentCenter.latitude;
@@ -1008,6 +1014,7 @@ export default function MapScreen() {
             }
           }
         );
+        if (cancelled) { posSub.remove(); return; }
 
         // Bússola: alimenta apenas o valor "parado"; descarta sensor ruim.
         headSub = await Location.watchHeadingAsync((h) => {
@@ -1019,6 +1026,7 @@ export default function MapScreen() {
           const filtered = oneEuro(unwrapped, Date.now());
           compassHeading = ((filtered % 360) + 360) % 360;
         });
+        if (cancelled) { headSub.remove(); return; }
 
         // Loop de cadência fixa — única coisa que mexe na câmera.
         camLoop = setInterval(() => {
@@ -1045,6 +1053,7 @@ export default function MapScreen() {
     })();
 
     return () => {
+      cancelled = true;
       posSub?.remove();
       headSub?.remove();
       if (camLoop) clearInterval(camLoop);
@@ -1401,7 +1410,7 @@ export default function MapScreen() {
       </View>
 
       {/* Floating Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { top: insets.top + 6 }]}>
         <View style={styles.headerTop}>
           {/* Esquerda: marca (logo + nome) */}
           <View style={styles.headerLeft}>
@@ -1683,12 +1692,20 @@ export default function MapScreen() {
               <ScrollView
                 horizontal
                 pagingEnabled
+                scrollEnabled={!sightingZooming}
                 showsHorizontalScrollIndicator={false}
                 style={StyleSheet.absoluteFill}
                 onMomentumScrollEnd={(e) => setSightingGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / heroW))}
               >
                 {gallery.map((u, idx) => (
-                  <Image key={idx} source={{ uri: u }} style={{ width: heroW, height: '100%' }} resizeMode="cover" />
+                  <ZoomableImage
+                    key={idx}
+                    source={{ uri: u }}
+                    style={{ width: heroW, height: '100%' }}
+                    resizeMode="cover"
+                    onZoomStart={() => setSightingZooming(true)}
+                    onZoomEnd={() => setSightingZooming(false)}
+                  />
                 ))}
               </ScrollView>
             ) : (
@@ -2070,6 +2087,20 @@ export default function MapScreen() {
                 )}
               </View>
 
+              {/* Chamar no chat quem publicou (se liberou contato no cadastro) */}
+              {!isMyPet(selectedPet) && (selectedPet.type === 'sighted' || selectedPet.type === 'rescued') && selectedPet.allow_contact !== false && (
+                <TouchableOpacity
+                  style={styles.sheetChatBtn}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/chat/${selectedPet.id}?tutorId=${selectedPet.user?.id}`)}
+                >
+                  <Ionicons name="chatbubbles" size={17} color="#FF4757" />
+                  <Text style={styles.sheetChatBtnText}>
+                    {selectedPet.type === 'rescued' ? 'Conversar com quem resgatou' : 'Conversar com quem viu'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {/* Denunciar alerta inapropriado */}
               {!isMyPet(selectedPet) && isReportable(selectedPet) && (
                 <TouchableOpacity
@@ -2106,6 +2137,11 @@ export default function MapScreen() {
             } else {
               handleSightingContact(detailsPet);
             }
+          }}
+          onDirectChat={() => {
+            // Visto/resgatado: chama no chat quem publicou (contato liberado no cadastro).
+            setShowDetails(false);
+            if (detailsPet) router.push(`/chat/${detailsPet.id}?tutorId=${detailsPet.user_id}`);
           }}
           onMyChats={() => {
             setShowDetails(false);
@@ -2816,7 +2852,7 @@ function ClusterCapture({
 // PetDetailsView — modal full-screen com galeria
 // ============================================================================
 function PetDetailsView({
-  pet, loading, galleryIndex, setGalleryIndex, isMine, canReport, onClose, onChat, onMyChats, onRoute, onReport, sightings, onOpenSighting, address, distanceM,
+  pet, loading, galleryIndex, setGalleryIndex, isMine, canReport, onClose, onChat, onDirectChat, onMyChats, onRoute, onReport, sightings, onOpenSighting, address, distanceM,
 }: {
   pet: any;
   loading: boolean;
@@ -2826,6 +2862,7 @@ function PetDetailsView({
   canReport: boolean;
   onClose: () => void;
   onChat: () => void;
+  onDirectChat: () => void;
   onMyChats: () => void;
   onRoute: () => void;
   onReport: () => void;
@@ -2838,6 +2875,8 @@ function PetDetailsView({
   const insets = useSafeAreaInsets();
   // Apenas safe area do sistema (barra de gestos/botões do celular)
   const actionBarPaddingBottom = Math.max(insets.bottom, 8) + 8;
+  // Durante o pinch-zoom da foto, desliga o paging da galeria.
+  const [galleryZooming, setGalleryZooming] = useState(false);
 
   if (loading || !pet) {
     return (
@@ -2902,21 +2941,29 @@ function PetDetailsView({
         <ScrollView
           horizontal
           pagingEnabled
+          scrollEnabled={!galleryZooming}
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(e) => setGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         >
           {gallery.map((url, i) => (
-            <Image key={i} source={{ uri: url }} style={{ width, height: 360 }} resizeMode="cover" />
+            <ZoomableImage
+              key={i}
+              source={{ uri: url }}
+              style={{ width, height: 360 }}
+              resizeMode="cover"
+              onZoomStart={() => setGalleryZooming(true)}
+              onZoomEnd={() => setGalleryZooming(false)}
+            />
           ))}
         </ScrollView>
 
         {/* Botão fechar */}
-        <TouchableOpacity style={detStyles.closeBtn} onPress={onClose}>
+        <TouchableOpacity style={[detStyles.closeBtn, { top: insets.top + 6 }]} onPress={onClose}>
           <Ionicons name="close" size={22} color="#2F3542" />
         </TouchableOpacity>
 
         {/* Status badge */}
-        <View style={[detStyles.statusBadgeAbs, { backgroundColor: headBadge.bg }]}>
+        <View style={[detStyles.statusBadgeAbs, { backgroundColor: headBadge.bg, top: insets.top + 10 }]}>
           <View style={[detStyles.statusDot, { backgroundColor: headBadge.color }]} />
           <Text style={[detStyles.statusBadgeText, { color: headBadge.color }]}>{headBadge.label}</Text>
         </View>
@@ -2932,7 +2979,7 @@ function PetDetailsView({
 
         {/* Contador "1/4" */}
         {gallery.length > 1 && (
-          <View style={detStyles.counter}>
+          <View style={[detStyles.counter, { top: insets.top + 10 }]}>
             <Ionicons name="images" size={12} color="#FFF" />
             <Text style={detStyles.counterText}>{galleryIndex + 1}/{gallery.length}</Text>
           </View>
@@ -2945,6 +2992,9 @@ function PetDetailsView({
           <View style={detStyles.titleRow}>
             <Text style={detStyles.petName}>{pet.name}</Text>
           </View>
+
+          {/* Compartilhar publicação destacada nas redes/mensagens */}
+          <SharePetButton pet={pet} address={address} style={detStyles.shareInline} label="Compartilhar publicação" />
 
           {/* Recompensa garantida (logo abaixo do nome) */}
           {reward && Number(reward.amount) > 0 && (
@@ -3119,28 +3169,57 @@ function PetDetailsView({
       </ScrollView>
 
       {/* Barra inferior de ações */}
-      <View style={[detStyles.actionBar, { paddingBottom: actionBarPaddingBottom }]}>
-        <TouchableOpacity style={detStyles.secondaryAction} onPress={onRoute}>
-          <Ionicons name="navigate" size={20} color="#FF4757" />
-          <Text style={detStyles.secondaryActionText}>Rota</Text>
-        </TouchableOpacity>
-        {isMine ? (
-          <TouchableOpacity style={[detStyles.primaryAction, { backgroundColor: '#747D8C', shadowColor: '#747D8C' }]} onPress={onMyChats}>
-            <Ionicons name="chatbubbles-outline" size={20} color="#FFF" />
-            <Text style={detStyles.primaryActionText}>Ver meus chats</Text>
-          </TouchableOpacity>
-        ) : chatAllowed ? (
-          <TouchableOpacity style={detStyles.primaryAction} onPress={onChat}>
-            <Ionicons name="chatbubbles" size={20} color="#FFF" />
-            <Text style={detStyles.primaryActionText}>{tm.chat}</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={[detStyles.primaryAction, { backgroundColor: '#CED6E0', shadowOpacity: 0 }]}>
-            <Ionicons name="chatbubble-ellipses-outline" size={20} color="#FFF" />
-            <Text style={detStyles.primaryActionText}>Contato indisponível</Text>
+      {(() => {
+        // Visto/resgatado com contato autorizado: além de reivindicar ("É o meu pet?"),
+        // dá pra chamar no chat quem publicou (o autor liberou contato no cadastro).
+        const isFound = petType === 'sighted' || petType === 'rescued';
+        const showDirectChat = !isMine && chatAllowed && isFound;
+        return (
+          <View style={[detStyles.actionBar, { paddingBottom: actionBarPaddingBottom }]}>
+            {showDirectChat ? (
+              <>
+                <View style={detStyles.actionRow}>
+                  <TouchableOpacity style={detStyles.secondaryFlex} onPress={onRoute}>
+                    <Ionicons name="navigate" size={19} color="#FF4757" />
+                    <Text style={detStyles.secondaryActionText}>Rota</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={detStyles.secondaryFlex} onPress={onDirectChat}>
+                    <Ionicons name="chatbubbles" size={19} color="#FF4757" />
+                    <Text style={detStyles.secondaryActionText}>Conversar</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={detStyles.primaryFull} onPress={onChat}>
+                  <Ionicons name="paw" size={20} color="#FFF" />
+                  <Text style={detStyles.primaryActionText}>{tm.chat}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={detStyles.actionRow}>
+                <TouchableOpacity style={detStyles.secondaryAction} onPress={onRoute}>
+                  <Ionicons name="navigate" size={20} color="#FF4757" />
+                  <Text style={detStyles.secondaryActionText}>Rota</Text>
+                </TouchableOpacity>
+                {isMine ? (
+                  <TouchableOpacity style={[detStyles.primaryAction, { backgroundColor: '#747D8C', shadowColor: '#747D8C' }]} onPress={onMyChats}>
+                    <Ionicons name="chatbubbles-outline" size={20} color="#FFF" />
+                    <Text style={detStyles.primaryActionText}>Ver meus chats</Text>
+                  </TouchableOpacity>
+                ) : chatAllowed ? (
+                  <TouchableOpacity style={detStyles.primaryAction} onPress={onChat}>
+                    <Ionicons name="chatbubbles" size={20} color="#FFF" />
+                    <Text style={detStyles.primaryActionText}>{tm.chat}</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={[detStyles.primaryAction, { backgroundColor: '#CED6E0', shadowOpacity: 0 }]}>
+                    <Ionicons name="chatbubble-ellipses-outline" size={20} color="#FFF" />
+                    <Text style={detStyles.primaryActionText}>Contato indisponível</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
-        )}
-      </View>
+        );
+      })()}
     </View>
   );
 }
@@ -3247,11 +3326,16 @@ const detStyles = StyleSheet.create({
 
   actionBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16,
-    backgroundColor: '#FFF', flexDirection: 'row', gap: 10,
+    backgroundColor: '#FFF', flexDirection: 'column', gap: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 8,
   },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   secondaryAction: {
     width: 110, height: 56, borderRadius: 16, backgroundColor: '#FFF0F1',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  secondaryFlex: {
+    flex: 1, height: 52, borderRadius: 16, backgroundColor: '#FFF0F1',
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
   secondaryActionText: { color: '#FF4757', fontWeight: '800', fontSize: 14 },
@@ -3260,7 +3344,13 @@ const detStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     shadowColor: '#FF4757', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
   },
+  primaryFull: {
+    height: 56, borderRadius: 16, backgroundColor: '#FF4757',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    shadowColor: '#FF4757', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6,
+  },
   primaryActionText: { color: '#FFF', fontWeight: '900', fontSize: 15 },
+  shareInline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 46, borderRadius: 14, backgroundColor: '#FFF0F1', marginTop: 12 },
 
   reportLink: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -3864,6 +3954,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
   },
+  sheetChatBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    marginTop: 8, height: 46, borderRadius: 14, backgroundColor: '#FFF0F1',
+  },
+  sheetChatBtnText: { color: '#FF4757', fontWeight: '800', fontSize: 14 },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   tag: {
     backgroundColor: '#F1F2F6',

@@ -11,6 +11,8 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../../../contexts/AuthContext';
 import { getPetCase } from '../../../services/api';
 import { Avatar } from '../../../components/Avatar';
+import { ZoomableImage } from '../../../components/ZoomableImage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const W = Dimensions.get('window').width;
 
@@ -34,8 +36,10 @@ export default function PetCaseScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [heroZooming, setHeroZooming] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -82,7 +86,7 @@ export default function PetCaseScreen() {
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
       >
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
@@ -91,12 +95,12 @@ export default function PetCaseScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} scrollEnabled={!heroZooming}>
         {/* Foto + nome + status */}
         <View style={styles.heroWrap}>
-          <ExpoImage source={{ uri: pet.main_photo_url }} style={styles.heroImg} contentFit="cover" />
-          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.75)']} style={styles.heroGradient} />
-          <View style={styles.heroInfo}>
+          <ZoomableImage source={{ uri: pet.main_photo_url }} style={styles.heroImg} resizeMode="cover" onZoomStart={() => setHeroZooming(true)} onZoomEnd={() => setHeroZooming(false)} />
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.75)']} style={styles.heroGradient} pointerEvents="none" />
+          <View style={styles.heroInfo} pointerEvents="none">
             <Text style={styles.heroName}>{pet.name}</Text>
             <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
               <Ionicons name={status.icon} size={13} color={status.color} />

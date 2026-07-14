@@ -18,6 +18,7 @@ import { supabase } from '../../../services/supabase';
 import { prepareForUpload } from '../../../services/upload';
 import { getPetDetails, updatePet, increaseReward, PetSize, PetSex, PetAgeGroup, PetType } from '../../../services/api';
 import { RegionAlertButton } from '../../../components/RegionAlertButton';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from '../../../components/Feedback';
 
 // Metadados por tipo de alerta (cor/título/rótulos) — espelha a tela de criar.
@@ -43,6 +44,7 @@ const AGE_OPTIONS: { value: PetAgeGroup; label: string }[] = [
 
 export default function EditPetScreen() {
   const { id: petId } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const router = useRouter();
 
@@ -249,7 +251,7 @@ export default function EditPetScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F1F2F6' }} behavior="padding">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F1F2F6' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Modal visible={showMapPicker} animationType="slide">
         <View style={styles.mapModalContainer}>
           <MapView
@@ -287,7 +289,7 @@ export default function EditPetScreen() {
         colors={meta.colors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.header, { shadowColor: accent }]}
+        style={[styles.header, { shadowColor: accent, paddingTop: insets.top + 10 }]}
       >
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
@@ -427,14 +429,24 @@ export default function EditPetScreen() {
               <Ionicons name="pencil-outline" size={20} color="#A4B0BE" />
             </TouchableOpacity>
             {showDatePicker && (
-              <DateTimePicker
-                value={lostDate}
-                mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
-                is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                maximumDate={new Date()}
-                onChange={onChangePicker}
-              />
+              <>
+                <DateTimePicker
+                  value={lostDate}
+                  mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
+                  is24Hour
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={new Date()}
+                  onChange={onChangePicker}
+                />
+                {Platform.OS === 'ios' && (
+                  <TouchableOpacity
+                    style={{ alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 10 }}
+                    onPress={() => setShowDatePicker(false)}
+                  >
+                    <Text style={{ color: '#FF4757', fontWeight: '800', fontSize: 15 }}>Concluir</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
           )}

@@ -391,8 +391,21 @@ export default function ReportScreen() {
             return;
           }
         } else {
-          // Android: comportamento original inalterado.
-          loc = await Location.getCurrentPositionAsync({});
+          // Android: mesmo tratamento robusto — timeout de 10s + fallback para a
+          // última posição conhecida, senão o app trava em "Publicando..." quando
+          // o GPS não obtém fix (ambiente fechado, sinal fraco).
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          loc = await Promise.race<Location.LocationObject | null>([
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(null), 10000); }),
+          ]).catch(() => null);
+          if (timer) clearTimeout(timer);
+          if (!loc) loc = await Location.getLastKnownPositionAsync();
+          if (!loc) {
+            toast.warning('Não consegui sua localização agora. Toque em "Marcar no Mapa" para escolher o local.');
+            setIsSubmitting(false);
+            return;
+          }
         }
         finalLat = loc.coords.latitude;
         finalLng = loc.coords.longitude;
@@ -522,9 +535,9 @@ export default function ReportScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Picker de localização no mapa */}
-      <Modal visible={showMapPicker} animationType="slide">
+      <Modal visible={showMapPicker} animationType="slide" onRequestClose={() => setShowMapPicker(false)}>
         <View style={styles.mapModalContainer}>
           {mapPickerReady ? (
             <MapView
