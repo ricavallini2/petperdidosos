@@ -225,6 +225,7 @@ export default function MapScreen() {
   const [cardOpen, setCardOpen] = useState(false);
   // Galeria do card do mapa (foto principal + extras) com carrossel deslizável.
   const [cardGallery, setCardGallery] = useState<string[]>([]);
+  const [cardZooming, setCardZooming] = useState(false);
   const [cardGalleryIndex, setCardGalleryIndex] = useState(0);
   const [pets, setPets] = useState<PetSighting[]>([]);
   // Filtro por tipo (legenda interativa no mapa).
@@ -1831,12 +1832,19 @@ export default function MapScreen() {
                   horizontal
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
-                  scrollEnabled={cardGallery.length > 1}
+                  scrollEnabled={cardGallery.length > 1 && !cardZooming}
                   style={StyleSheet.absoluteFillObject}
                   onMomentumScrollEnd={(e) => setCardGalleryIndex(Math.round(e.nativeEvent.contentOffset.x / CARD_W))}
                 >
                   {cardGallery.map((uri, i) => (
-                    <Image key={i} source={{ uri }} style={{ width: CARD_W, height: HERO_MAX }} resizeMode="cover" />
+                    <ZoomableImage
+                      key={i}
+                      source={{ uri }}
+                      style={{ width: CARD_W, height: HERO_MAX }}
+                      resizeMode="cover"
+                      onZoomStart={() => setCardZooming(true)}
+                      onZoomEnd={() => setCardZooming(false)}
+                    />
                   ))}
                 </ScrollView>
               ) : (
