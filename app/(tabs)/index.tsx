@@ -1877,8 +1877,10 @@ export default function MapScreen() {
                 <Ionicons name="close" size={16} color="#2F3542" />
               </TouchableOpacity>
               {/* Nome + recompensa na base da foto */}
-              <View pointerEvents="none" style={styles.sheetHeroInfo}>
+              <View style={styles.sheetHeroInfo}>
                 <Text style={styles.sheetHeroName} numberOfLines={1}>{selectedPet.name}</Text>
+                {/* Compartilhar publicação — ao lado do nome */}
+                <SharePetButton pet={selectedPet} address={petAddress} label="" style={styles.sheetHeroShare} />
                 {selectedPet.reward && selectedPet.reward.amount > 0 && (
                   <View style={styles.sheetHeroReward}>
                     <Text style={styles.sheetHeroRewardLabel}>Recompensa</Text>
@@ -3841,7 +3843,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: '#FFF',
-    flex: 1,
+    flexShrink: 1,
     letterSpacing: -0.3,
     textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 1 },
@@ -3959,6 +3961,11 @@ const styles = StyleSheet.create({
     marginTop: 8, height: 46, borderRadius: 14, backgroundColor: '#FFF0F1',
   },
   sheetChatBtnText: { color: '#FF4757', fontWeight: '800', fontSize: 14 },
+  sheetHeroShare: {
+    width: 38, height: 38, borderRadius: 19, marginLeft: 8,
+    backgroundColor: 'rgba(255,255,255,0.95)', flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 5,
+  },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   tag: {
     backgroundColor: '#F1F2F6',
