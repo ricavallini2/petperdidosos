@@ -200,6 +200,9 @@ const ClusterMarker = React.memo(function ClusterMarker({
 
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
+  // Altura máxima do card de detalhe: nunca passa da safe-area do topo (senão a
+  // foto/badge somem sob a status bar). O que exceder rola dentro do corpo.
+  const sheetMaxHeight = Dimensions.get('window').height - insets.top - 130 - 12;
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   // Persiste a localização (o backend só grava se o opt-in de alertas de região
   // estiver ligado) — mantém a mira do push fresca. Throttle de 15 min.
@@ -1686,7 +1689,7 @@ export default function MapScreen() {
           : null;
         const elapsed = formatElapsedMask(selectedSighting.created_at);
         return (
-        <View style={styles.bottomSheet}>
+        <View style={[styles.bottomSheet, { maxHeight: sheetMaxHeight }]}>
           {/* Hero: carrossel com altura ajustável (arraste) + badge .PET VISTO */}
           <Animated.View style={[styles.sheetHero, { height: heroHeight }]}>
             {gallery.length > 0 ? (
@@ -1735,8 +1738,8 @@ export default function MapScreen() {
             </View>
           </Animated.View>
 
-          {/* Corpo */}
-          <View style={styles.sheetBody}>
+          {/* Corpo — rola se passar da altura máxima do card */}
+          <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false} bounces={false}>
             {/* Cartão de informações principais */}
             <View style={styles.sightingInfoCard}>
               {!!selectedSighting.created_at && (
@@ -1816,13 +1819,13 @@ export default function MapScreen() {
                 </View>
               );
             })()}
-          </View>
+          </ScrollView>
         </View>
         );
       })()}
 
       {/* Premium Bottom Sheet for Pet Details */}
-      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}>
+      <Animated.View style={[styles.bottomSheet, { maxHeight: sheetMaxHeight }, { transform: [{ translateY: slideAnim }] }]}>
         {cardOpen && selectedPet && (
           <>
             {/* Hero: foto full-width com gradiente e info sobreposta */}
@@ -1901,8 +1904,8 @@ export default function MapScreen() {
               </View>
             </Animated.View>
 
-            {/* Corpo */}
-            <View style={styles.sheetBody}>
+            {/* Corpo — rola se o conteúdo passar da altura máxima do card */}
+            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} showsVerticalScrollIndicator={false} bounces={false}>
               {(() => {
                 const tColor = ringColorForPet(selectedPet);
                 const tBg = petTypeBg(selectedPet);
@@ -2122,7 +2125,7 @@ export default function MapScreen() {
                   <Text style={styles.reportLinkText}>Denunciar este alerta</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </ScrollView>
           </>
         )}
       </Animated.View>
@@ -3890,6 +3893,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   // Corpo
+  sheetScroll: {
+    flexShrink: 1, // encolhe (e rola) quando o card bate na altura máxima
+  },
   sheetBody: {
     padding: 14,
   },
