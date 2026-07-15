@@ -3,8 +3,9 @@ import { Animated, View, Text, TouchableOpacity, StyleSheet, PanResponder, Easin
 import { Ionicons } from '@expo/vector-icons';
 
 // Filtros recolhíveis: barra no topo (chevron à direita) + gesto.
-// Fechado: arrastar pra BAIXO abre (ou toque). Aberto: fecha só no toque da barra —
-// arrastar pra cima NÃO fecha (evita fechar sem querer ao interagir/rolar).
+// Fechado: arrastar pra BAIXO abre. Aberto: arrastar pra CIMA fecha. Toque alterna.
+// O gesto usa CAPTURE para vencer o toque do TouchableOpacity da barra (senão o
+// arraste não era assumido e o fechar-por-arraste não funcionava).
 // Sem dependências extras — Animated (JS driver, pois animamos height) + PanResponder.
 const ANIM = { duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: false };
 
@@ -33,18 +34,24 @@ export function CollapsibleFilters({
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      // Só assume o gesto para ABRIR: fechado + arraste pra BAIXO. Quando já está
-      // aberto, NÃO rouba o gesto (arrastar pra cima não fecha; fechar é pelo toque).
-      onMoveShouldSetPanResponder: (_e, g) => !openRef.current && g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      // Arraste vertical claro assume o gesto. O capture garante que o PanResponder
+      // vença o toque do TouchableOpacity da barra (o tap sem arraste continua alternando).
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 5 && Math.abs(g.dy) > Math.abs(g.dx),
+      onMoveShouldSetPanResponderCapture: (_e, g) => Math.abs(g.dy) > 8 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2,
       onPanResponderMove: (_e, g) => {
         const h = contentHRef.current || 1;
-        const next = Math.max(0, Math.min(h, g.dy)); // base 0 (fechado)
-        anim.setValue(next / h);
+        const base = openRef.current ? h : 0;
+        anim.setValue(Math.max(0, Math.min(h, base + g.dy)) / h);
       },
       onPanResponderRelease: (_e, g) => {
         const h = contentHRef.current || 1;
-        const current = Math.max(0, Math.min(h, g.dy));
-        animateTo(g.vy > 0.4 || current > h / 2 ? 1 : 0);
+        const base = openRef.current ? h : 0;
+        const current = Math.max(0, Math.min(h, base + g.dy));
+        let to: 0 | 1;
+        if (g.vy < -0.25) to = 0;          // deslizou pra cima → fecha
+        else if (g.vy > 0.25) to = 1;      // deslizou pra baixo → abre
+        else to = current > h / 2 ? 1 : 0; // senão, decide pela posição
+        animateTo(to);
       },
       onPanResponderTerminate: () => animateTo(openRef.current ? 1 : 0),
     }),
