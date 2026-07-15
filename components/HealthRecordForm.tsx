@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePickerSheet from './DateTimePickerSheet';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
@@ -47,18 +48,20 @@ export default function HealthRecordForm({ petId, petName, record }: Props) {
 
   const isPeso = type === 'peso';
 
+  // Android apenas: diálogo nativo. No iOS o picker vive no DateTimePickerSheet.
   const onChangeDate = (event: any, selected?: Date) => {
+    if (Platform.OS !== 'android') return;
     const field = picker;
-    if (Platform.OS === 'android') {
-      setPicker(null);
-      if (event?.type === 'dismissed' || !selected) return;
-    } else if (!selected) {
-      return;
-    }
-    if (selected) {
-      if (field === 'aplicada') setDateAplicada(selected);
-      else if (field === 'proxima') setProximaData(selected);
-    }
+    setPicker(null);
+    if (event?.type === 'dismissed' || !selected) return;
+    if (field === 'aplicada') setDateAplicada(selected);
+    else if (field === 'proxima') setProximaData(selected);
+  };
+
+  const confirmIosDate = (selected: Date) => {
+    if (picker === 'aplicada') setDateAplicada(selected);
+    else if (picker === 'proxima') setProximaData(selected);
+    setPicker(null);
   };
 
   const handleSubmit = async () => {
@@ -225,23 +228,25 @@ export default function HealthRecordForm({ petId, petName, record }: Props) {
         </View>
       </KeyboardAwareScrollView>
 
-      {/* Picker fora do ScrollView para não rolar junto no iOS */}
-      {picker && (
-        <View style={styles.pickerSheet}>
-          <DateTimePicker
-            value={(picker === 'aplicada' ? dateAplicada : proximaData) ?? new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onChangeDate}
-            locale="pt-BR"
-          />
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity style={styles.iosDoneBtn} onPress={() => setPicker(null)}>
-              <Text style={styles.iosDoneText}>Concluir</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+      {/* Android: diálogo nativo */}
+      {Platform.OS === 'android' && picker && (
+        <DateTimePicker
+          value={(picker === 'aplicada' ? dateAplicada : proximaData) ?? new Date()}
+          mode="date"
+          display="default"
+          onChange={onChangeDate}
+          locale="pt-BR"
+        />
       )}
+      {/* iOS: bottom sheet com Cancelar/Confirmar */}
+      <DateTimePickerSheet
+        visible={Platform.OS === 'ios' && picker !== null}
+        value={(picker === 'aplicada' ? dateAplicada : proximaData) ?? new Date()}
+        mode="date"
+        title={picker === 'proxima' ? 'Próxima dose / reforço' : 'Data de aplicação'}
+        onConfirm={confirmIosDate}
+        onCancel={() => setPicker(null)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -287,9 +292,6 @@ const styles = StyleSheet.create({
   },
   locationButtonText: { flex: 1, fontSize: 16, color: '#2F3542', fontWeight: '600', marginLeft: 12 },
 
-  pickerSheet: { backgroundColor: '#FFF', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#DFE4EA', paddingBottom: 20 },
-  iosDoneBtn: { alignSelf: 'flex-end', marginRight: 20, paddingHorizontal: 18, paddingVertical: 8, backgroundColor: '#FF4757', borderRadius: 12 },
-  iosDoneText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
 
   submitWrapper: { marginTop: 14, shadowColor: '#FF4757', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 15, elevation: 8 },
   submitButton: { flexDirection: 'row', height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', gap: 8 },

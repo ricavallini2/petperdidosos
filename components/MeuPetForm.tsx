@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePickerSheet from './DateTimePickerSheet';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { decode } from 'base64-arraybuffer';
@@ -104,14 +105,12 @@ export default function MeuPetForm({ title, petId, initial }: Props) {
     return data.publicUrl;
   };
 
+  // Android apenas: diálogo nativo. No iOS o picker vive no DateTimePickerSheet.
   const onChangeDate = (event: any, selected?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-      if (event?.type === 'dismissed' || !selected) return;
-      setBirthDate(selected);
-    } else if (selected) {
-      setBirthDate(selected);
-    }
+    if (Platform.OS !== 'android') return;
+    setShowDatePicker(false);
+    if (event?.type === 'dismissed' || !selected) return;
+    setBirthDate(selected);
   };
 
   const handleSubmit = async () => {
@@ -281,23 +280,25 @@ export default function MeuPetForm({ title, petId, initial }: Props) {
                 <Ionicons name="pencil-outline" size={20} color="#A4B0BE" />
               )}
             </TouchableOpacity>
-            {showDatePicker && (
-              <>
-                <DateTimePicker
-                  value={birthDate ?? new Date()}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  maximumDate={new Date()}
-                  onChange={onChangeDate}
-                  locale="pt-BR"
-                />
-                {Platform.OS === 'ios' && (
-                  <TouchableOpacity style={styles.iosDoneBtn} onPress={() => setShowDatePicker(false)}>
-                    <Text style={styles.iosDoneText}>Concluir</Text>
-                  </TouchableOpacity>
-                )}
-              </>
+            {Platform.OS === 'android' && showDatePicker && (
+              <DateTimePicker
+                value={birthDate ?? new Date()}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={onChangeDate}
+                locale="pt-BR"
+              />
             )}
+            <DateTimePickerSheet
+              visible={Platform.OS === 'ios' && showDatePicker}
+              value={birthDate ?? new Date()}
+              mode="date"
+              title="Data de nascimento"
+              maximumDate={new Date()}
+              onConfirm={(d) => { setBirthDate(d); setShowDatePicker(false); }}
+              onCancel={() => setShowDatePicker(false)}
+            />
           </View>
 
           <View style={styles.inputGroup}>
@@ -411,8 +412,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#DFE4EA', paddingHorizontal: 16, height: 56,
   },
   locationButtonText: { flex: 1, fontSize: 16, color: '#2F3542', fontWeight: '600', marginLeft: 12 },
-  iosDoneBtn: { alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 8, marginTop: 6, backgroundColor: '#FF4757', borderRadius: 12 },
-  iosDoneText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
 
   flagCard: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF',

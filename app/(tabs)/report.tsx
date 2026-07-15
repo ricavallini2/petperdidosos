@@ -11,6 +11,7 @@ import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePickerSheet from '../../components/DateTimePickerSheet';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { decode } from 'base64-arraybuffer';
@@ -88,21 +89,20 @@ export default function ReportScreen() {
     setShowDatePicker(true);
   };
 
+  // Android apenas: fluxo nativo em 2 passos (date → time). No iOS o picker vive
+  // dentro do DateTimePickerSheet (modal com Cancelar/Confirmar).
   const onChangePicker = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-      if (event?.type === 'dismissed' || !selectedDate) return;
-      const next = new Date(lostDate);
-      if (pickerMode === 'date') {
-        next.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
-        setLostDate(next);
-        setTimeout(() => { setPickerMode('time'); setShowDatePicker(true); }, 100);
-      } else {
-        next.setHours(selectedDate.getHours(), selectedDate.getMinutes());
-        setLostDate(next);
-      }
+    if (Platform.OS !== 'android') return;
+    setShowDatePicker(false);
+    if (event?.type === 'dismissed' || !selectedDate) return;
+    const next = new Date(lostDate);
+    if (pickerMode === 'date') {
+      next.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+      setLostDate(next);
+      setTimeout(() => { setPickerMode('time'); setShowDatePicker(true); }, 100);
     } else {
-      if (selectedDate) setLostDate(selectedDate);
+      next.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+      setLostDate(next);
     }
   };
   const [locationMode, setLocationMode] = useState<'gps' | 'map'>('gps');
@@ -837,16 +837,25 @@ export default function ReportScreen() {
               <Text style={styles.locationButtonText}>{format(lostDate, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</Text>
               <Ionicons name="pencil-outline" size={20} color="#A4B0BE" />
             </TouchableOpacity>
-            {showDatePicker && (
+            {Platform.OS === 'android' && showDatePicker && (
               <DateTimePicker
                 value={lostDate}
-                mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
+                mode={pickerMode}
                 is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                display="default"
                 maximumDate={new Date()}
                 onChange={onChangePicker}
               />
             )}
+            <DateTimePickerSheet
+              visible={Platform.OS === 'ios' && showDatePicker}
+              value={lostDate}
+              mode="datetime"
+              title={mode === 'lost' ? 'Data e hora do desaparecimento' : 'Data e hora em que viu'}
+              maximumDate={new Date()}
+              onConfirm={(d) => { setLostDate(d); setShowDatePicker(false); }}
+              onCancel={() => setShowDatePicker(false)}
+            />
           </View>
           )}
 
