@@ -10,6 +10,7 @@ import { getPetDetails } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from '../../components/Feedback';
 import { ZoomableImage } from '../../components/ZoomableImage';
+import { SharePetButton } from '../../components/SharePetButton';
 
 const DONATION_COLOR = '#3B82F6';
 const { width } = Dimensions.get('window');
@@ -118,6 +119,8 @@ export default function DonationDetailScreen() {
           <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8 }]} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
+          {/* Compartilhar a publicação (canto superior direito) */}
+          <SharePetButton pet={pet} label="" style={[styles.shareBtnHero, { top: insets.top + 8 }]} />
           <View style={styles.donationTag}>
             <Ionicons name="heart" size={13} color="#FFF" />
             <Text style={styles.donationTagText}>Para adoção</Text>
@@ -209,6 +212,11 @@ const styles = StyleSheet.create({
   backBtn: {
     position: 'absolute', left: 16, width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center',
+  },
+  shareBtnHero: {
+    position: 'absolute', right: 16, width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.95)', flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 5,
   },
   donationTag: {
     position: 'absolute', bottom: 14, left: 16, flexDirection: 'row', alignItems: 'center', gap: 5,

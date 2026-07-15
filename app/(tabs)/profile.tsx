@@ -491,44 +491,48 @@ function PetCard({ pet, styles, onConfirm, onFindOwner, onCancel, onEdit, onPres
         <>
           <View style={styles.cardDivider} />
           <View style={styles.cardActions}>
-            {onConfirm && (
-              <TouchableOpacity style={styles.actionPrimary} onPress={onConfirm}>
-                <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                <Text style={styles.actionPrimaryText}>Confirmar resgate</Text>
-              </TouchableOpacity>
-            )}
-            {onFindOwner && (
-              <TouchableOpacity style={styles.actionPrimary} onPress={onFindOwner}>
-                <Ionicons name="search" size={18} color="#FFF" />
-                <Text style={styles.actionPrimaryText}>Procurar tutor</Text>
-              </TouchableOpacity>
-            )}
-            {onDonate && (
-              <TouchableOpacity style={[styles.actionPrimary, { backgroundColor: '#3B82F6', shadowColor: '#3B82F6' }]} onPress={onDonate}>
-                <Ionicons name="gift" size={18} color="#FFF" />
-                <Text style={styles.actionPrimaryText}>Doar este pet</Text>
-              </TouchableOpacity>
-            )}
-            {onConcludeDonation && (
-              <TouchableOpacity style={[styles.actionPrimary, { backgroundColor: '#3B82F6', shadowColor: '#3B82F6' }]} onPress={onConcludeDonation}>
-                <Ionicons name="checkmark-done" size={18} color="#FFF" />
-                <Text style={styles.actionPrimaryText}>Doado em outro local</Text>
-              </TouchableOpacity>
-            )}
-            {/* Pet perdido: alertar buscadores da região (ícone megafone) */}
-            {petType === 'lost' && <RegionAlertButton petId={pet.id} compact style={styles.actionIconBtn} />}
-            {/* Compartilhar a publicação — todos os tipos (perdido/visto/resgatado/doação) */}
-            <SharePetButton pet={pet} label="" style={styles.actionIconBtn} />
-            {onEdit && (
-              <TouchableOpacity style={styles.actionIconBtn} onPress={onEdit}>
-                <Ionicons name="create-outline" size={20} color="#FF4757" />
-              </TouchableOpacity>
-            )}
-            {onCancel && (
-              <TouchableOpacity style={[styles.actionIconBtn, styles.actionIconBtnDanger]} onPress={onCancel}>
-                <Ionicons name="trash-outline" size={18} color="#FF4757" />
-              </TouchableOpacity>
-            )}
+            {/* Linha 1: ações secundárias — editar · alertar região (perdido) · compartilhar */}
+            <View style={styles.cardActionsIcons}>
+              {onEdit && (
+                <TouchableOpacity style={styles.actionIconBtn} onPress={onEdit}>
+                  <Ionicons name="create-outline" size={20} color="#FF4757" />
+                </TouchableOpacity>
+              )}
+              {petType === 'lost' && <RegionAlertButton petId={pet.id} compact style={styles.actionIconBtn} />}
+              <SharePetButton pet={pet} label="" style={styles.actionIconBtn} />
+            </View>
+            {/* Linha 2: ação principal (larga) + excluir */}
+            <View style={styles.cardActionsMain}>
+              {onConfirm && (
+                <TouchableOpacity style={styles.actionPrimary} onPress={onConfirm}>
+                  <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                  <Text style={styles.actionPrimaryText}>Confirmar resgate</Text>
+                </TouchableOpacity>
+              )}
+              {onFindOwner && (
+                <TouchableOpacity style={styles.actionPrimary} onPress={onFindOwner}>
+                  <Ionicons name="search" size={18} color="#FFF" />
+                  <Text style={styles.actionPrimaryText}>Procurar tutor</Text>
+                </TouchableOpacity>
+              )}
+              {onDonate && (
+                <TouchableOpacity style={[styles.actionPrimary, { backgroundColor: '#3B82F6', shadowColor: '#3B82F6' }]} onPress={onDonate}>
+                  <Ionicons name="gift" size={18} color="#FFF" />
+                  <Text style={styles.actionPrimaryText}>Doar este pet</Text>
+                </TouchableOpacity>
+              )}
+              {onConcludeDonation && (
+                <TouchableOpacity style={[styles.actionPrimary, { backgroundColor: '#3B82F6', shadowColor: '#3B82F6' }]} onPress={onConcludeDonation}>
+                  <Ionicons name="checkmark-done" size={18} color="#FFF" />
+                  <Text style={styles.actionPrimaryText}>Doado em outro local</Text>
+                </TouchableOpacity>
+              )}
+              {onCancel && (
+                <TouchableOpacity style={[styles.actionIconBtn, styles.actionIconBtnDanger]} onPress={onCancel}>
+                  <Ionicons name="trash-outline" size={18} color="#FF4757" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </>
       )}
@@ -919,10 +923,11 @@ const styles = StyleSheet.create({
   metaPending: { fontSize: 11, color: '#FFA502', fontWeight: '600' },
 
   cardDivider: { height: 1, backgroundColor: '#F1F2F6', marginVertical: 14 },
-  cardActions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+  cardActions: { gap: 8 },
+  cardActionsIcons: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  cardActionsMain: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   actionPrimary: {
     flex: 1,
-    minWidth: 150,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
