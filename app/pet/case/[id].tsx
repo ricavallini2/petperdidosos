@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getPetCase } from '../../../services/api';
+import { getPetCase, getSuccessCase, SuccessCase } from '../../../services/api';
 import { Avatar } from '../../../components/Avatar';
 import { ZoomableImage } from '../../../components/ZoomableImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,14 +38,19 @@ export default function PetCaseScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<any>(null);
+  const [successCase, setSuccessCase] = useState<SuccessCase | null>(null);
   const [loading, setLoading] = useState(true);
   const [heroZooming, setHeroZooming] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const d = await getPetCase(String(id));
+        const [d, sc] = await Promise.all([
+          getPetCase(String(id)),
+          getSuccessCase(String(id)).catch(() => null),
+        ]);
         setData(d);
+        setSuccessCase(sc);
       } catch (e) {
         console.warn('Erro ao carregar caso', e);
       } finally {
@@ -120,6 +125,44 @@ export default function PetCaseScreen() {
               ))}
             </View>
           )}
+
+          {/* Final feliz — registro do tutor (foto + mensagem do reencontro) */}
+          {successCase && (successCase.photo_url || successCase.message) ? (
+            <>
+              <Text style={styles.sectionTitle}>Final feliz 🎉</Text>
+              <View style={styles.card}>
+                {!!successCase.photo_url && (
+                  <ExpoImage source={{ uri: successCase.photo_url }} style={styles.successPhoto} contentFit="cover" />
+                )}
+                {!!successCase.message && (
+                  <Text style={styles.successMessage}>“{successCase.message}”</Text>
+                )}
+                {user?.id === pet.user_id && (
+                  <TouchableOpacity style={styles.successEditBtn} onPress={() => router.push(`/pet/success/${pet.id}`)}>
+                    <Ionicons name="pencil" size={14} color="#26B765" />
+                    <Text style={styles.successEditText}>Editar registro</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </>
+          ) : user?.id === pet.user_id && ['encontrado', 'doado'].includes(pet.status) ? (
+            <TouchableOpacity
+              style={styles.successCta}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/pet/success/${pet.id}`)}
+            >
+              <View style={styles.successCtaIcon}>
+                <Text style={{ fontSize: 22 }}>🎉</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.successCtaTitle}>Registrar final feliz</Text>
+                <Text style={styles.successCtaSub}>
+                  Adicione uma foto e uma mensagem do reencontro à ficha do caso.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#26B765" />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Timeline */}
           <Text style={styles.sectionTitle}>Linha do tempo</Text>
@@ -278,6 +321,22 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 13, color: '#2F3542', fontWeight: '600' },
 
   sectionTitle: { fontSize: 13, fontWeight: '800', color: '#747D8C', textTransform: 'uppercase', marginTop: 22, marginBottom: 10 },
+
+  // Final feliz
+  successPhoto: { width: '100%', height: 200, borderRadius: 14, backgroundColor: '#F1F2F6' },
+  successMessage: { fontSize: 14.5, color: '#2F3542', fontStyle: 'italic', lineHeight: 22, marginTop: 12 },
+  successEditBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-end', marginTop: 10 },
+  successEditText: { color: '#26B765', fontSize: 12.5, fontWeight: '800' },
+  successCta: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#E8F8F0',
+    borderRadius: 18, padding: 14, marginTop: 22, borderWidth: 1, borderColor: '#C8F0D8',
+  },
+  successCtaIcon: {
+    width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFF',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  successCtaTitle: { fontSize: 15, fontWeight: '900', color: '#1E9E56' },
+  successCtaSub: { fontSize: 12, color: '#26B765', marginTop: 2, lineHeight: 16 },
   card: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,

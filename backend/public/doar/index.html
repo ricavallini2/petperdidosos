@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apoie o PetPerdidoSOS 💚 — Ajude a reunir pets e famílias</title>
+<meta name="description" content="O PetPerdidoSOS é 100% gratuito para quem perdeu um pet. Sua doação via Pix mantém o app, os mapas e a busca por IA funcionando." />
+<meta property="og:title" content="Apoie o PetPerdidoSOS 💚" />
+<meta property="og:description" content="Ajude a manter no ar o app que reúne pets perdidos e suas famílias. Doe qualquer valor via Pix." />
+<meta property="og:image" content="logo.png" />
+<link rel="icon" type="image/png" href="logo.png" />
+<style>
+  :root {
+    --red: #FF4757;
+    --red-dark: #E8414F;
+    --red-soft: #FFF0F1;
+    --green: #2ED573;
+    --green-soft: #E8F8F5;
+    --ink: #2F3542;
+    --gray: #747D8C;
+    --gray-light: #A4B0BE;
+    --line: #EDF0F4;
+    --bg: #F7F8FA;
+    --radius: 20px;
+    --shadow: 0 10px 30px rgba(47, 53, 66, .08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* ───── Nav ───── */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 68px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 19px; color: var(--ink); text-decoration: none; }
+  .brand img { width: 40px; height: 40px; border-radius: 10px; }
+  .brand span b { color: var(--red); }
+  .nav-cta {
+    background: var(--red); color: #fff; font-weight: 800; font-size: 14px;
+    padding: 11px 22px; border-radius: 999px; text-decoration: none;
+    box-shadow: 0 6px 16px rgba(255,71,87,.35); transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(255,71,87,.42); }
+
+  /* ───── Hero ───── */
+  header.hero {
+    background:
+      radial-gradient(1200px 500px at 85% -10%, rgba(255,71,87,.10), transparent 60%),
+      radial-gradient(900px 420px at 0% 110%, rgba(46,213,115,.10), transparent 55%),
+      #fff;
+    padding: 72px 0 56px; text-align: center;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--red-soft); color: var(--red); font-weight: 800; font-size: 13px;
+    padding: 8px 16px; border-radius: 999px; margin-bottom: 22px;
+  }
+  h1 { font-size: clamp(30px, 5vw, 48px); font-weight: 900; line-height: 1.15; letter-spacing: -.5px; }
+  h1 em { font-style: normal; color: var(--red); }
+  .hero p.sub {
+    max-width: 640px; margin: 18px auto 0; color: var(--gray); font-size: clamp(15px, 2vw, 18px);
+  }
+  .hero-actions { margin-top: 30px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--red); color: #fff; font-weight: 800; font-size: 16px;
+    padding: 15px 34px; border-radius: 999px; text-decoration: none; border: 0; cursor: pointer;
+    box-shadow: 0 8px 20px rgba(255,71,87,.35); transition: transform .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-ghost {
+    color: var(--ink); font-weight: 700; font-size: 16px; padding: 15px 28px;
+    border-radius: 999px; text-decoration: none; border: 2px solid var(--line); background: #fff;
+  }
+  .btn-ghost:hover { border-color: var(--gray-light); }
+
+  /* stats */
+  .stats { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 44px; }
+  .stat {
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px 30px; min-width: 150px; box-shadow: var(--shadow);
+  }
+  .stat b { display: block; font-size: 30px; font-weight: 900; color: var(--red); line-height: 1.2; }
+  .stat span { font-size: 13px; color: var(--gray); font-weight: 600; }
+
+  /* ───── Sections ───── */
+  section { padding: 64px 0; }
+  .sec-head { text-align: center; max-width: 620px; margin: 0 auto 40px; }
+  .sec-head h2 { font-size: clamp(24px, 3.4vw, 34px); font-weight: 900; letter-spacing: -.4px; }
+  .sec-head p { color: var(--gray); margin-top: 10px; font-size: 16px; }
+
+  /* ───── Doação ───── */
+  #doar { scroll-margin-top: 80px; }
+  .donate-card {
+    background: #fff; border-radius: 28px; box-shadow: var(--shadow);
+    max-width: 720px; margin: 0 auto; padding: 38px; border: 1px solid var(--line);
+  }
+  .amounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
+  .amount {
+    border: 2px solid var(--line); background: #fff; border-radius: 16px;
+    padding: 16px 8px; font-size: 18px; font-weight: 800; color: var(--ink);
+    cursor: pointer; transition: all .15s ease; text-align: center;
+  }
+  .amount small { display: block; font-size: 11px; color: var(--gray-light); font-weight: 700; margin-top: 2px; }
+  .amount:hover { border-color: var(--red); }
+  .amount.active { border-color: var(--red); background: var(--red-soft); color: var(--red); }
+  .custom-row { display: flex; gap: 12px; margin-top: 14px; }
+  .custom-row .field {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    border: 2px solid var(--line); border-radius: 16px; padding: 0 16px; background: #fff;
+  }
+  .custom-row .field.active { border-color: var(--red); }
+  .custom-row .field span { font-weight: 800; color: var(--gray); }
+  .custom-row input {
+    border: 0; outline: 0; width: 100%; padding: 15px 0; font-size: 17px; font-weight: 700; color: var(--ink);
+    background: transparent;
+  }
+  .donate-btn { width: 100%; justify-content: center; margin-top: 22px; font-size: 17px; }
+  .donate-note { text-align: center; color: var(--gray-light); font-size: 12.5px; margin-top: 14px; }
+
+  /* resultado pix */
+  .pix-result { display: none; margin-top: 28px; border-top: 1px dashed var(--line); padding-top: 28px; text-align: center; }
+  .pix-result.show { display: block; }
+  .qr-box {
+    width: 240px; height: 240px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+    border-radius: 20px; padding: 12px; box-shadow: var(--shadow);
+  }
+  .qr-box svg { width: 100%; height: 100%; }
+  .pix-amount { font-size: 22px; font-weight: 900; margin-top: 16px; }
+  .pix-amount small { color: var(--gray); font-weight: 600; font-size: 13px; display: block; }
+  .copy-area {
+    margin: 18px auto 0; max-width: 480px; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px; font-size: 12px; color: var(--gray);
+    word-break: break-all; text-align: left; font-family: ui-monospace, Consolas, monospace;
+  }
+  .copy-btn {
+    margin-top: 14px; background: var(--green); color: #fff; border: 0; cursor: pointer;
+    font-weight: 800; font-size: 15px; padding: 13px 30px; border-radius: 999px;
+    box-shadow: 0 6px 16px rgba(46,213,115,.35); transition: transform .15s ease;
+  }
+  .copy-btn:hover { transform: translateY(-1px); }
+  .pix-error { display: none; margin-top: 18px; color: var(--red); font-weight: 700; font-size: 14px; text-align: center; }
+
+  /* ───── Para onde vai ───── */
+  .uses { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+  .use {
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px 22px; box-shadow: var(--shadow);
+  }
+  .use .ico {
+    width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin-bottom: 14px; background: var(--red-soft);
+  }
+  .use h3 { font-size: 16.5px; font-weight: 800; margin-bottom: 6px; }
+  .use p { font-size: 14px; color: var(--gray); line-height: 1.55; }
+
+  /* ───── Casos de sucesso ───── */
+  #casos { background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+  .case {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 22px; overflow: hidden;
+    display: flex; flex-direction: column; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .case:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+  .case .ph { position: relative; aspect-ratio: 4 / 3; background: var(--line); }
+  .case .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .case .tag {
+    position: absolute; top: 12px; left: 12px; background: var(--green); color: #fff;
+    font-size: 11px; font-weight: 900; letter-spacing: .4px; padding: 6px 12px; border-radius: 999px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.18);
+  }
+  .case .body { padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .case h3 { font-size: 17px; font-weight: 900; }
+  .case .days { font-size: 12.5px; color: var(--green); font-weight: 800; }
+  .case p.msg { font-size: 14px; color: var(--gray); font-style: italic; flex: 1; }
+  .case .by { font-size: 12px; color: var(--gray-light); font-weight: 700; }
+  .cases-empty {
+    text-align: center; color: var(--gray-light); font-weight: 600; padding: 30px 0;
+  }
+
+  /* ───── Transparência / faq curta ───── */
+  .trust {
+    display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 860px; margin: 0 auto;
+  }
+  .trust .t {
+    flex: 1 1 250px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px; font-size: 14px; color: var(--gray);
+  }
+  .trust .t b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 6px; }
+
+  /* ───── Footer ───── */
+  footer { padding: 40px 0 60px; text-align: center; color: var(--gray-light); font-size: 13px; }
+  footer a { color: var(--gray); text-decoration: none; font-weight: 700; }
+  footer .links { display: flex; gap: 22px; justify-content: center; margin-bottom: 14px; }
+
+  @media (max-width: 560px) {
+    .donate-card { padding: 26px 18px; }
+    .custom-row { flex-direction: column; }
+    nav .nav-cta { padding: 9px 16px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="#">
+      <img src="logo.png" alt="PetPerdidoSOS" />
+      <span>Pet<b>Perdido</b>SOS</span>
+    </a>
+    <a class="nav-cta" href="#doar">Doar agora 💚</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-badge">🐾 App 100% gratuito para quem perdeu um pet</div>
+    <h1>Ajude a manter o <em>PetPerdidoSOS</em> no ar</h1>
+    <p class="sub">
+      Todos os dias, tutores e voluntários usam o app para procurar, avistar e resgatar
+      pets perdidos — sem pagar nada. Servidores, mapas e a busca por inteligência artificial
+      têm custo. <strong>Sua doação, de qualquer valor, mantém tudo funcionando.</strong>
+    </p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="#doar">Fazer uma doação via Pix</a>
+      <a class="btn-ghost" href="#casos">Ver finais felizes</a>
+    </div>
+    <div class="stats" id="stats" hidden>
+      <div class="stat"><b id="st-happy">–</b><span>finais felizes 🎉</span></div>
+      <div class="stat"><b id="st-active">–</b><span>buscas ativas agora</span></div>
+      <div class="stat"><b id="st-users">–</b><span>pessoas na comunidade</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="doar">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Doe qualquer valor via Pix</h2>
+      <p>Escolha um valor, escaneie o QR Code ou copie o código. A doação cai direto na conta do projeto — sem intermediários e sem taxas de plataforma.</p>
+    </div>
+    <div class="donate-card">
+      <div class="amounts" id="amounts">
+        <button class="amount" data-v="10">R$ 10<small>um cafezinho ☕</small></button>
+        <button class="amount active" data-v="25">R$ 25<small>mantém os mapas 🗺️</small></button>
+        <button class="amount" data-v="50">R$ 50<small>impulsiona a IA 🤖</small></button>
+        <button class="amount" data-v="100">R$ 100<small>herói do mês 🦸</small></button>
+      </div>
+      <div class="custom-row">
+        <div class="field" id="customField">
+          <span>R$</span>
+          <input id="customAmount" type="number" min="1" step="1" placeholder="Outro valor" inputmode="decimal" />
+        </div>
+        <button class="btn-primary donate-btn" id="generateBtn" style="width:auto; margin-top:0;">Gerar Pix</button>
+      </div>
+      <p class="donate-note">🔒 Pagamento processado pelo seu próprio banco. Não pedimos dados pessoais.</p>
+
+      <div class="pix-error" id="pixError"></div>
+
+      <div class="pix-result" id="pixResult">
+        <div class="qr-box" id="qrBox"></div>
+        <div class="pix-amount"><span id="pixAmount"></span><small>Escaneie com o app do seu banco</small></div>
+        <div class="copy-area" id="pixPayload"></div>
+        <button class="copy-btn" id="copyBtn">📋 Copiar código Pix</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Para onde vai a sua doação</h2>
+      <p>Transparência total: o projeto não tem fins lucrativos e cada real doado cobre custos reais de operação.</p>
+    </div>
+    <div class="uses">
+      <div class="use"><div class="ico">🗺️</div><h3>Mapas e localização</h3><p>O mapa em tempo real com alertas e buscadores usa serviços pagos de geolocalização.</p></div>
+      <div class="use"><div class="ico">🤖</div><h3>Busca por IA</h3><p>Cada foto analisada pelo reconhecimento de pets roda em servidores de inteligência artificial.</p></div>
+      <div class="use"><div class="ico">☁️</div><h3>Servidores e fotos</h3><p>Banco de dados, armazenamento de fotos e o backend que mantém tudo conectado 24h.</p></div>
+      <div class="use"><div class="ico">🔔</div><h3>Notificações</h3><p>Alertas por região e avisos em tempo real que ajudam um pet a ser visto mais rápido.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="casos">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Finais felizes que você ajudou a escrever 💚</h2>
+      <p>Casos reais concluídos no app, publicados com autorização dos tutores.</p>
+    </div>
+    <div class="cases" id="cases"></div>
+    <div class="cases-empty" id="casesEmpty" hidden>Os primeiros finais felizes aparecerão aqui em breve. 🐾</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="trust">
+      <div class="t"><b>É seguro?</b> O Pix é gerado no padrão oficial do Banco Central e a transferência acontece no app do seu banco, direto para a conta do projeto.</div>
+      <div class="t"><b>Precisa doar para usar o app?</b> Não. O PetPerdidoSOS é e continuará gratuito. A doação é 100% voluntária.</div>
+      <div class="t"><b>Posso doar mais de uma vez?</b> Pode! Cada doação, de qualquer valor, ajuda a manter as buscas no ar.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="links">
+    <a href="/termos" target="_blank">Termos de uso</a>
+    <a href="/privacidade" target="_blank">Privacidade</a>
+  </div>
+  PetPerdidoSOS © <span id="year"></span> — feito com 💚 para reunir pets e famílias.
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

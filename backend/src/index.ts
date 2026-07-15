@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import yauzl from 'yauzl';
+import QRCode from 'qrcode';
 import Anthropic from '@anthropic-ai/sdk';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
@@ -14,6 +15,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { supabase } from './supabase.js';
 import { haversineMeters } from './distance.js';
+import { buildPixPayload } from './pix.js';
 import { generateImageEmbedding, isEmbeddingEnabled } from './embedding.js';
 import {
   generatePetVisionTags, isVisionTagsEnabled, attributeAgreement, hybridScore,
@@ -22,8 +24,19 @@ import {
 const app = express();
 app.set('trust proxy', 1); // atrás de proxy/LB — necessário para rate limit por IP
 
-// Cabeçalhos de segurança HTTP
-app.use(helmet());
+// Cabeçalhos de segurança HTTP. CSP: mantém os defaults do helmet, mas libera
+// imagens https (fotos dos pets no Supabase Storage aparecem na página /doar).
+// Scripts continuam 'self' — a página de doação usa app.js externo, sem inline.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'img-src': ["'self'", 'data:', 'https:'],
+      },
+    },
+  })
+);
 
 // CORS: libera origens conhecidas (painel admin/web). Requisições sem Origin
 // (app mobile nativo, curl) são permitidas — a segurança da API é o JWT, não o
@@ -189,6 +202,127 @@ function gateProfilePhoto(p: any): any {
   delete p.show_profile_photo;
   return p;
 }
+
+// ============================================================================
+// SITE DE DOAÇÃO (/doar) — página pública + APIs abertas que a alimentam.
+// A página estática vive em backend/public/doar e é servida pelo próprio
+// Express: o deploy continua sendo git pull + pm2 restart, sem passo extra.
+// ============================================================================
+const DOAR_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../public/doar');
+app.use(
+  '/doar',
+  express.static(DOAR_DIR, {
+    index: 'index.html',
+    maxAge: '1d', // assets (logo, js) podem cachear…
+    setHeaders(res, filePath) {
+      // …mas o HTML sempre revalida (atualizações da página valem na hora)
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+    },
+  })
+);
+
+// Pix da doação: monta o BR Code ("copia e cola") + QR em SVG com o valor
+// escolhido pelo doador. Transferência direta pra chave configurada no admin —
+// o backend nunca toca no dinheiro.
+app.get(
+  '/public/donation/pix',
+  asyncHandler(async (req, res) => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('donation_pix_key')
+      .eq('id', 1)
+      .maybeSingle();
+    const pixKey = (data?.donation_pix_key ?? '').trim();
+    if (!pixKey) return res.status(503).json({ error: 'Doação por Pix ainda não configurada.' });
+
+    const raw = Number(String(req.query.amount ?? '').replace(',', '.'));
+    const amount = Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
+    if (amount < 1 || amount > 50000) {
+      return res.status(400).json({ error: 'Valor deve ser entre R$ 1,00 e R$ 50.000,00' });
+    }
+
+    const payload = buildPixPayload({
+      key: pixKey,
+      merchantName: 'PETPERDIDOSOS',
+      merchantCity: 'SAO PAULO',
+      amount,
+    });
+    const qrSvg = await QRCode.toString(payload, { type: 'svg', margin: 1, width: 320 });
+    res.json({ amount, payload, qrSvg });
+  })
+);
+
+// Estatísticas públicas do projeto (contadores exibidos no site de doação).
+app.get(
+  '/public/stats',
+  asyncHandler(async (_req, res) => {
+    const [reunited, adopted, active, users] = await Promise.all([
+      supabase.from('pets').select('id', { count: 'exact', head: true }).eq('status', 'encontrado'),
+      supabase.from('pets').select('id', { count: 'exact', head: true }).eq('status', 'doado'),
+      supabase.from('pets').select('id', { count: 'exact', head: true }).eq('status', 'ativo'),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }),
+    ]);
+    res.json({
+      reunited: reunited.count ?? 0,
+      adopted: adopted.count ?? 0,
+      happyEndings: (reunited.count ?? 0) + (adopted.count ?? 0),
+      activeAlerts: active.count ?? 0,
+      users: users.count ?? 0,
+    });
+  })
+);
+
+// Casos de sucesso AUTORIZADOS pelo tutor — versão pública para o site.
+// Privacidade: primeiro nome do tutor apenas; nenhuma foto de pessoa.
+app.get(
+  '/public/success-cases',
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(24, Math.max(1, Number(req.query.limit ?? 12) || 12));
+    const { data: cases } = await supabase
+      .from('success_cases')
+      .select(
+        `id, pet_id, photo_url, message, created_at,
+         pets ( name, type, main_photo_url, lost_date ),
+         tutor:profiles!success_cases_tutor_id_fkey ( full_name )`
+      )
+      .eq('authorized', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    const petIds = (cases ?? []).map((c: any) => c.pet_id);
+    const closedByPet = new Map<string, string>();
+    if (petIds.length) {
+      const { data: chats } = await supabase
+        .from('chats')
+        .select('pet_id, closed_at')
+        .eq('found', true)
+        .in('pet_id', petIds);
+      (chats ?? []).forEach((c: any) => {
+        if (c.closed_at) closedByPet.set(c.pet_id, c.closed_at);
+      });
+    }
+
+    res.json(
+      (cases ?? []).map((c: any) => {
+        const lost = c.pets?.lost_date ? new Date(c.pets.lost_date) : null;
+        const foundIso = closedByPet.get(c.pet_id) ?? c.created_at;
+        const days = lost
+          ? Math.max(0, Math.round((new Date(foundIso).getTime() - lost.getTime()) / 86400000))
+          : null;
+        return {
+          id: c.id,
+          pet_name: c.pets?.name ?? 'Pet',
+          pet_type: c.pets?.type ?? 'lost',
+          photo_url: c.photo_url || c.pets?.main_photo_url || null,
+          message: c.message,
+          tutor_first_name: String(c.tutor?.full_name ?? '').trim().split(/\s+/)[0] || null,
+          days_lost: days,
+          concluded_at: foundIso,
+        };
+      })
+    );
+  })
+);
 
 // ============================================================================
 // ADMIN — painel administrativo (acesso restrito a is_admin)
@@ -2971,6 +3105,123 @@ app.get(
 );
 
 // ============================================================================
+// CASOS DE SUCESSO — registro do final feliz + vitrine dentro do app
+// ============================================================================
+// Tutor registra (ou atualiza) o final feliz de um caso concluído.
+// "authorized" = consentimento para publicar no app e no site de doação.
+app.post(
+  '/pets/:petId/success-case',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { photo_url, message, authorized } = req.body ?? {};
+
+    const { data: pet, error: petErr } = await supabase
+      .from('pets')
+      .select('id, user_id, status')
+      .eq('id', petId)
+      .single();
+    if (petErr || !pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) {
+      return res.status(403).json({ error: 'Apenas o tutor pode registrar o final feliz' });
+    }
+    if (!['encontrado', 'doado'].includes(pet.status)) {
+      return res.status(400).json({ error: 'O caso precisa estar concluído para registrar o final feliz' });
+    }
+
+    const msg = String(message ?? '').trim().slice(0, 600);
+    const { data: sc, error } = await supabase
+      .from('success_cases')
+      .upsert(
+        {
+          pet_id: petId,
+          tutor_id: userId,
+          photo_url: photo_url ? String(photo_url) : null,
+          message: msg,
+          authorized: authorized === true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'pet_id' }
+      )
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json({ success: true, successCase: sc });
+  })
+);
+
+// Registro de final feliz de um pet — visível se autorizado OU se for o tutor.
+app.get(
+  '/pets/:petId/success-case',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { petId } = req.params;
+    const { data: sc } = await supabase
+      .from('success_cases')
+      .select(
+        `id, pet_id, tutor_id, photo_url, message, authorized, created_at,
+         tutor:profiles!success_cases_tutor_id_fkey ( id, full_name, photo_url, show_profile_photo )`
+      )
+      .eq('pet_id', petId)
+      .maybeSingle();
+    if (!sc) return res.json({ successCase: null });
+    if (!sc.authorized && sc.tutor_id !== userId) return res.json({ successCase: null });
+    gateProfilePhoto((sc as any).tutor);
+    res.json({ successCase: sc });
+  })
+);
+
+// Vitrine de casos de sucesso dentro do app (somente autorizados).
+app.get(
+  '/success-cases',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit ?? 50) || 50));
+    const { data: cases } = await supabase
+      .from('success_cases')
+      .select(
+        `id, pet_id, photo_url, message, created_at,
+         pets ( id, name, type, breed, main_photo_url, lost_date, status ),
+         tutor:profiles!success_cases_tutor_id_fkey ( id, full_name, photo_url, show_profile_photo )`
+      )
+      .eq('authorized', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    const petIds = (cases ?? []).map((c: any) => c.pet_id);
+    const foundByPet = new Map<string, { closed_at: string | null; finder_name: string | null }>();
+    if (petIds.length) {
+      const { data: chats } = await supabase
+        .from('chats')
+        .select('pet_id, closed_at, finder:profiles!chats_finder_id_fkey ( full_name )')
+        .eq('found', true)
+        .in('pet_id', petIds);
+      (chats ?? []).forEach((c: any) => {
+        foundByPet.set(c.pet_id, {
+          closed_at: c.closed_at ?? null,
+          finder_name: c.finder?.full_name ?? null,
+        });
+      });
+    }
+
+    res.json(
+      (cases ?? []).map((c: any) => {
+        gateProfilePhoto(c.tutor);
+        const found = foundByPet.get(c.pet_id);
+        const lost = c.pets?.lost_date ? new Date(c.pets.lost_date) : null;
+        const foundIso = found?.closed_at ?? c.created_at;
+        const days = lost
+          ? Math.max(0, Math.round((new Date(foundIso).getTime() - lost.getTime()) / 86400000))
+          : null;
+        return { ...c, finder_name: found?.finder_name ?? null, days_lost: days, concluded_at: foundIso };
+      })
+    );
+  })
+);
+
+// ============================================================================
 // PETS — criar alerta
 // ============================================================================
 app.post(
@@ -4857,6 +5108,10 @@ app.post(
 // ============================================================================
 // PREMIUM — status, assinar, controle de uso de busca por IA
 // ============================================================================
+// DESATIVADO por enquanto: tudo liberado para todos (buscas por IA ilimitadas,
+// sem paywall). No lugar, o app oferece a área "Apoie o app" (doação voluntária).
+// Para reativar o premium, volte esta flag para true.
+const PREMIUM_ENABLED = false;
 const AI_SEARCH_MONTHLY_LIMIT = 5;
 
 app.get(
@@ -4864,6 +5119,24 @@ app.get(
   requireUser,
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
+
+    if (!PREMIUM_ENABLED) {
+      return res.json({
+        premiumEnabled: false,
+        isPremium: false,
+        expiresAt: null,
+        plan: null,
+        aiSearchesLeft: null, // null = ilimitado
+        aiSearchesUsed: 0,
+        aiSearchesLimit: null,
+        premiumSettings: {
+          rewardMinAmount: 0,
+          rewardMaxAmount: null,
+          alertEnabled: true,
+          highlightOnMap: true,
+        },
+      });
+    }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -4922,6 +5195,12 @@ app.post(
     const userId = authedId(req);
     const { planType = 'monthly' } = req.body ?? {};
 
+    if (!PREMIUM_ENABLED) {
+      return res.status(403).json({
+        error: 'Assinaturas estão desativadas — o app está 100% gratuito. Se quiser ajudar, use a área "Apoie o app".',
+      });
+    }
+
     if (!['monthly', 'lifetime'].includes(planType)) {
       return res.status(400).json({ error: 'planType deve ser monthly ou lifetime' });
     }
@@ -4974,6 +5253,11 @@ app.post(
     // check_only = só verifica se pode buscar, SEM debitar a cota. O app debita
     // de verdade apenas após a busca por IA dar certo (não queima cota em falha).
     const checkOnly = req.body?.check_only === true;
+
+    // Premium desativado → buscas ilimitadas para todos, nunca bloqueia (402).
+    if (!PREMIUM_ENABLED) {
+      return res.json({ allowed: true, isPremium: false, aiSearchesLeft: null, unlimited: true });
+    }
 
     const { data: profile } = await supabase
       .from('profiles')

@@ -554,6 +554,72 @@ export const getDonationConfig = async (): Promise<{ pixKey: string | null; url:
 };
 
 // ============================================================================
+// CASOS DE SUCESSO — final feliz registrado pelo tutor ao concluir um caso
+// ============================================================================
+
+export interface SuccessCase {
+  id: string;
+  pet_id: string;
+  photo_url: string | null;
+  message: string;
+  authorized?: boolean;
+  created_at: string;
+  days_lost?: number | null;
+  concluded_at?: string;
+  finder_name?: string | null;
+  pets?: {
+    id: string;
+    name: string;
+    type: string;
+    breed?: string | null;
+    main_photo_url: string | null;
+    lost_date: string | null;
+    status: string;
+  } | null;
+  tutor?: { id: string; full_name: string | null; photo_url: string | null } | null;
+}
+
+// Tutor registra (ou atualiza) o final feliz do caso.
+// authorized = autoriza publicar no app (Casos de Sucesso) e no site de doação.
+export const saveSuccessCase = async (
+  petId: string,
+  data: { photoUrl?: string | null; message: string; authorized: boolean },
+): Promise<{ success: boolean; successCase: SuccessCase }> => {
+  const response = await authedFetch(`${API_URL}/pets/${petId}/success-case`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      photo_url: data.photoUrl ?? null,
+      message: data.message,
+      authorized: data.authorized,
+    }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+// Final feliz de um pet (autorizado, ou o próprio tutor vê o dele).
+export const getSuccessCase = async (petId: string): Promise<SuccessCase | null> => {
+  const response = await authedFetch(`${API_URL}/pets/${petId}/success-case`);
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.successCase ?? null;
+};
+
+// Vitrine de casos de sucesso (somente autorizados pelos tutores).
+export const listSuccessCases = async (): Promise<SuccessCase[]> => {
+  const response = await authedFetch(`${API_URL}/success-cases`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+// ============================================================================
 // ALERTA DE REGIÃO — destaque de pet perdido p/ buscadores no raio
 // ============================================================================
 

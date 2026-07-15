@@ -52,6 +52,9 @@ export default function ChatScreen() {
   const [ratingScore, setRatingScore] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
   const [isRating, setIsRating] = useState(false);
+  // Tutor concluiu o caso → depois da avaliação abre o registro do final feliz.
+  // A navegação espera o Modal desmontar (onDismiss no iOS) pra não congelar.
+  const [goSuccessAfterRating, setGoSuccessAfterRating] = useState(false);
   // Doação voluntária (Pix/link externos, do admin). Mostrada na conclusão positiva.
   const [donation, setDonation] = useState<{ pixKey: string | null; url: string | null }>({ pixKey: null, url: null });
   useEffect(() => { getDonationConfig().then(setDonation).catch(() => {}); }, []);
@@ -462,6 +465,8 @@ export default function ChatScreen() {
         return;
       }
       // Ambos confirmaram → caso encerrado: abre a avaliação mútua.
+      // Se quem concluiu é o tutor, depois da avaliação vem o registro do final feliz.
+      setGoSuccessAfterRating(chat.tutor_id === user.id);
       setRatingScore(0);
       setRatingComment('');
       setShowRatingModal(true);
@@ -490,6 +495,15 @@ export default function ChatScreen() {
       } finally {
         setIsRating(false);
       }
+    }
+    // Tutor: segue pro registro do final feliz (Android navega direto; iOS
+    // espera o onDismiss do Modal — navegar durante o dismiss congela a UI).
+    if (goSuccessAfterRating) {
+      if (Platform.OS !== 'ios') {
+        setGoSuccessAfterRating(false);
+        setTimeout(() => router.push(`/pet/success/${petId}`), 80);
+      }
+      return; // a celebração acontece na tela de final feliz
     }
     // Conclusão positiva: agradece (o card de doação aparece no chat encerrado).
     toast.success('Obrigado por usar o PetPerdidoSOS! 💚', 'Reencontro confirmado! 🎉');
@@ -936,7 +950,18 @@ export default function ChatScreen() {
         </KeyboardAvoidingView>
       </Modal>
       {/* Modal de avaliação do buscador */}
-      <Modal visible={showRatingModal} transparent animationType="fade">
+      <Modal
+        visible={showRatingModal}
+        transparent
+        animationType="fade"
+        onDismiss={() => {
+          // iOS: navegação pro final feliz só depois do modal desmontar
+          if (goSuccessAfterRating) {
+            setGoSuccessAfterRating(false);
+            setTimeout(() => router.push(`/pet/success/${petId}`), 0);
+          }
+        }}
+      >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {/* Cabeçalho */}

@@ -6,7 +6,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../services/supabase';
 import { getUserProfile, confirmRescue, cancelPet, transformToDonation, concludeDonation } from '../../services/api';
-import { usePremium } from '../../hooks/use-premium';
 import { toast, showConfirm } from '../../components/Feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SharePetButton } from '../../components/SharePetButton';
@@ -18,13 +17,15 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const premium = usePremium();
-  
+
   // Rescue Confirmation State
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
   const [finderEmail, setFinderEmail] = useState('');
   const [showRescueModal, setShowRescueModal] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  // Caso concluído na confirmação → abre o registro do final feliz depois que o
+  // modal fecha (nunca navegar durante o dismiss — congela no iOS).
+  const [pendingSuccessNav, setPendingSuccessNav] = useState<string | null>(null);
 
   // Transformar resgate em doação
   const [donatePet, setDonatePet] = useState<{ id: string; name: string } | null>(null);
@@ -107,10 +108,20 @@ export default function ProfileScreen() {
     
     setIsConfirming(true);
     try {
-      await confirmRescue(selectedPetId, user.id, finderEmail);
-      toast.success('Sua confirmação foi registrada. Combine a recompensa diretamente com quem ajudou.', 'Resgate confirmado!');
+      const result = await confirmRescue(selectedPetId, user.id, finderEmail);
       setShowRescueModal(false);
       setFinderEmail('');
+      if (result?.closed) {
+        // Caso concluído → tela de final feliz (Android navega direto; iOS espera o onDismiss)
+        setPendingSuccessNav(selectedPetId);
+        if (Platform.OS !== 'ios') {
+          const petId = selectedPetId;
+          setPendingSuccessNav(null);
+          setTimeout(() => router.push(`/pet/success/${petId}`), 80);
+        }
+      } else {
+        toast.success('Sua confirmação foi registrada. Aguardando quem resgatou confirmar para encerrar.', 'Quase lá! 🐾');
+      }
       loadProfile(); // Reload data
     } catch (error: any) {
       toast.error(error.message || 'Erro ao confirmar resgate.');
@@ -255,9 +266,10 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>Minha Conta</Text>
         <View style={styles.menuContainer}>
           <MenuOption icon="heart-circle-outline" title="Pets para adoção" iconColor="#3B82F6" onPress={() => router.push('/doacao')} />
+          <MenuOption icon="trophy-outline" title="Casos de Sucesso" iconColor="#FFA502" onPress={() => router.push('/success-cases')} />
           <MenuOption icon="person-outline" title="Editar Perfil" iconColor="#FF4757" onPress={() => router.push('/profile/edit')} />
           <MenuOption icon="notifications-outline" title="Notificações" iconColor="#FF4757" onPress={() => router.push('/profile/notifications')} hasBadge />
-          <PremiumMenuOption isPremium={premium.isPremium} onPress={() => router.push('/profile/premium')} />
+          <SupportMenuOption onPress={() => router.push('/profile/apoiar')} />
           <MenuOption icon="settings-outline" title="Configurações" iconColor="#FF4757" onPress={() => router.push('/profile/settings')} />
           <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => router.push('/profile/privacy')} />
           <MenuOption icon="headset-outline" title="Central de Ajuda" iconColor="#FF4757" onPress={() => router.push('/support')} />
@@ -273,7 +285,20 @@ export default function ProfileScreen() {
       </View>
 
       {/* Rescue Confirmation Modal */}
-      <Modal visible={showRescueModal} transparent animationType="fade" onRequestClose={() => setShowRescueModal(false)}>
+      <Modal
+        visible={showRescueModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRescueModal(false)}
+        onDismiss={() => {
+          // iOS: navega só depois do modal desmontar (senão congela a UI)
+          if (pendingSuccessNav) {
+            const petId = pendingSuccessNav;
+            setPendingSuccessNav(null);
+            setTimeout(() => router.push(`/pet/success/${petId}`), 0);
+          }
+        }}
+      >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -563,29 +588,21 @@ const MenuOption = ({ icon, title, iconColor, onPress, hasBadge = false }: { ico
   </TouchableOpacity>
 );
 
-const PremiumMenuOption = ({ isPremium, onPress }: { isPremium: boolean; onPress: () => void }) => (
+// Substitui o antigo item Premium: doação voluntária pra manter o app no ar.
+const SupportMenuOption = ({ onPress }: { onPress: () => void }) => (
   <TouchableOpacity style={styles.menuOption} activeOpacity={0.7} onPress={onPress}>
     <LinearGradient
-      colors={['#FFD700', '#FFA502']}
+      colors={['#2ED573', '#26B765']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.menuIconContainer}
     >
-      <Ionicons name="star" size={20} color="#FFF" />
+      <Ionicons name="heart" size={20} color="#FFF" />
     </LinearGradient>
-    <Text style={styles.menuOptionTitle}>
-      {isPremium ? 'Meu Premium ⭐' : 'Assinar Premium'}
-    </Text>
-    {!isPremium && (
-      <View style={styles.premiumPill}>
-        <Text style={styles.premiumPillText}>R$ 9,90</Text>
-      </View>
-    )}
-    {isPremium && (
-      <View style={styles.premiumActiveBadge}>
-        <Text style={styles.premiumActiveBadgeText}>Ativo</Text>
-      </View>
-    )}
+    <Text style={styles.menuOptionTitle}>Apoie o app</Text>
+    <View style={styles.supportPill}>
+      <Text style={styles.supportPillText}>Doação 💚</Text>
+    </View>
     <Ionicons name="chevron-forward" size={20} color="#DFE4EA" />
   </TouchableOpacity>
 );
@@ -848,27 +865,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FF4757',
   },
-  premiumPill: {
-    backgroundColor: '#FFF6E5',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginRight: 6,
-  },
-  premiumPillText: {
-    color: '#FFA502',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  premiumActiveBadge: {
+  supportPill: {
     backgroundColor: '#E8F8F0',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
     marginRight: 6,
   },
-  premiumActiveBadgeText: {
-    color: '#2ED573',
+  supportPillText: {
+    color: '#26B765',
     fontSize: 12,
     fontWeight: '800',
   },
