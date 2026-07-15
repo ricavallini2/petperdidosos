@@ -34,7 +34,7 @@ function money(v?: number | null) {
 function ShareCard({ pet, address }: { pet: any; address?: string | null }) {
   const type = pet?.type ?? 'lost';
   const t = TYPE_THEME[type] ?? TYPE_THEME.lost;
-  const photo = pet?.main_photo_url || pet?.photo || (Array.isArray(pet?.gallery) ? pet.gallery[0] : null);
+  const photo = pet?.main_photo_url || pet?.photo_url || pet?.photo || (Array.isArray(pet?.gallery) ? pet.gallery[0] : null);
   const chips = [pet?.species ? SPECIES[pet.species] : null, pet?.breed, pet?.size ? SIZE[pet.size] : null, pet?.sex ? SEX[pet.sex] : null].filter(Boolean);
   const when = fmt(pet?.lost_date);
   // Aceita as duas formas: reward_amount (detalhe) e reward.amount (pins do mapa).

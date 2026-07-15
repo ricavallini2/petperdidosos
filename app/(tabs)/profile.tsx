@@ -9,6 +9,8 @@ import { getUserProfile, confirmRescue, cancelPet, transformToDonation, conclude
 import { usePremium } from '../../hooks/use-premium';
 import { toast, showConfirm } from '../../components/Feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SharePetButton } from '../../components/SharePetButton';
+import { RegionAlertButton } from '../../components/RegionAlertButton';
 
 export default function ProfileScreen() {
   const { user } = useAuth();
@@ -446,7 +448,7 @@ function PetCard({ pet, styles, onConfirm, onFindOwner, onCancel, onEdit, onPres
               <View style={styles.metaItem}>
                 <Ionicons name="gift" size={14} color="#FFA502" />
                 <Text style={[styles.metaText, { color: '#FFA502', fontWeight: '800' }]}>
-                  R$ {Number(pet.reward.amount).toFixed(2)}
+                  R$ {Number(pet.reward.amount).toFixed(2).replace('.', ',')}
                 </Text>
               </View>
             )}
@@ -513,6 +515,10 @@ function PetCard({ pet, styles, onConfirm, onFindOwner, onCancel, onEdit, onPres
                 <Text style={styles.actionPrimaryText}>Doado em outro local</Text>
               </TouchableOpacity>
             )}
+            {/* Pet perdido: alertar buscadores da região (ícone megafone) */}
+            {petType === 'lost' && <RegionAlertButton petId={pet.id} compact style={styles.actionIconBtn} />}
+            {/* Compartilhar a publicação — todos os tipos (perdido/visto/resgatado/doação) */}
+            <SharePetButton pet={pet} label="" style={styles.actionIconBtn} />
             {onEdit && (
               <TouchableOpacity style={styles.actionIconBtn} onPress={onEdit}>
                 <Ionicons name="create-outline" size={20} color="#FF4757" />
@@ -913,9 +919,10 @@ const styles = StyleSheet.create({
   metaPending: { fontSize: 11, color: '#FFA502', fontWeight: '600' },
 
   cardDivider: { height: 1, backgroundColor: '#F1F2F6', marginVertical: 14 },
-  cardActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  cardActions: { flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   actionPrimary: {
     flex: 1,
+    minWidth: 150,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

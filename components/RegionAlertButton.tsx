@@ -7,7 +7,7 @@ import { toast } from './Feedback';
 
 // Botão do tutor: destaca o pet perdido para buscadores da região (push + banner).
 // Rate-limit: 1x por período (definido no admin) — o backend responde 429.
-export function RegionAlertButton({ petId }: { petId: string }) {
+export function RegionAlertButton({ petId, compact = false, style }: { petId: string; compact?: boolean; style?: any }) {
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [addToTimeline, setAddToTimeline] = useState(false);
@@ -42,12 +42,19 @@ export function RegionAlertButton({ petId }: { petId: string }) {
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} activeOpacity={0.9} onPress={() => setOpen(true)}>
-        <LinearGradient colors={['#FF6B81', '#FF4757']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.triggerBg}>
-          <Ionicons name="megaphone" size={20} color="#FFF" />
-          <Text style={styles.triggerText}>Alertar buscadores da região</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      {compact ? (
+        // Versão compacta (ícone) — para caber na linha de ações dos cards.
+        <TouchableOpacity style={style} activeOpacity={0.85} onPress={() => setOpen(true)}>
+          <Ionicons name="megaphone" size={20} color="#FF4757" />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={styles.trigger} activeOpacity={0.9} onPress={() => setOpen(true)}>
+          <LinearGradient colors={['#FF6B81', '#FF4757']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.triggerBg}>
+            <Ionicons name="megaphone" size={20} color="#FFF" />
+            <Text style={styles.triggerText}>Alertar buscadores da região</Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      )}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
