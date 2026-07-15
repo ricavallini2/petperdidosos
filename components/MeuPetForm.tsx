@@ -3,6 +3,7 @@ import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Image, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -154,7 +155,7 @@ export default function MeuPetForm({ title, petId, initial }: Props) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={undefined}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
+      <KeyboardAwareScrollView bottomOffset={24} style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <LinearGradient colors={['#FF6B81', '#FF4757']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
           <TouchableOpacity style={styles.headerBack} activeOpacity={0.8} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={20} color="#FFF" />
@@ -344,7 +345,7 @@ export default function MeuPetForm({ title, petId, initial }: Props) {
 
           <View style={{ height: 150 }} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

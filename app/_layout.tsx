@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import '../utils/textScaling'; // limita o aumento de fonte do sistema (não quebra o layout)
 import * as Sentry from '@sentry/react-native';
 
@@ -68,9 +69,11 @@ function RootLayoutNav() {
 function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <RootLayoutNav />
-      </AuthProvider>
+      <KeyboardProvider>
+        <AuthProvider>
+          <RootLayoutNav />
+        </AuthProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

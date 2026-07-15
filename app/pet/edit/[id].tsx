@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, Image, Modal, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView from 'react-native-maps';
 import * as ImagePicker from 'expo-image-picker';
@@ -298,7 +299,7 @@ export default function EditPetScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
+      <KeyboardAwareScrollView bottomOffset={24} style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <View style={styles.formContainer}>
           {/* Foto principal */}
           <Text style={styles.sectionTitle}>Foto principal</Text>
@@ -566,7 +567,7 @@ export default function EditPetScreen() {
 
           <View style={{ height: 100 }} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

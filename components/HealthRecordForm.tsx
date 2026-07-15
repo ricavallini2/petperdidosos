@@ -3,6 +3,7 @@ import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
@@ -131,7 +132,7 @@ export default function HealthRecordForm({ petId, petName, record }: Props) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={undefined}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
+      <KeyboardAwareScrollView bottomOffset={24} style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <LinearGradient colors={['#FF6B81', '#FF4757']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
           <TouchableOpacity style={styles.headerBack} activeOpacity={0.8} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={20} color="#FFF" />
@@ -222,7 +223,7 @@ export default function HealthRecordForm({ petId, petName, record }: Props) {
 
           <View style={{ height: 150 }} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Picker fora do ScrollView para não rolar junto no iOS */}
       {picker && (

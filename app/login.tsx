@@ -3,6 +3,7 @@ import {
   StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView,
   Platform, ActivityIndicator, ScrollView, Linking,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
@@ -160,10 +161,10 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={undefined}>
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={true}
+        bottomOffset={24}
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -363,7 +364,7 @@ export default function LoginScreen() {
         <Text style={[styles.marketing, { marginBottom: insets.bottom + 16 }]}>
           Tecnologia e comunidade trabalhando juntas para trazer cada pet de volta para casa.
         </Text>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

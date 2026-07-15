@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, Image, Modal, Keyboard, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
@@ -609,7 +610,7 @@ export default function ReportScreen() {
         </View>
       </Modal>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
+      <KeyboardAwareScrollView bottomOffset={24} style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         <LinearGradient
           colors={MODE_META[mode].colors}
           start={{ x: 0, y: 0 }}
@@ -991,7 +992,7 @@ export default function ReportScreen() {
 
           <View style={{ height: 150 }} />
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

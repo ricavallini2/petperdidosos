@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -126,10 +127,10 @@ export default function EditProfileScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={true}
+        bottomOffset={24}
       >
         <TouchableOpacity style={styles.avatarContainer} onPress={handlePickImage}>
           {photoUri || existingPhotoUrl ? (
@@ -221,7 +222,7 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
 
         <View style={{ height: 60 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }
