@@ -7,6 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from './Feedback';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SPECIES: Record<string, string> = { cachorro: 'Cachorro', gato: 'Gato', passaro: 'Pássaro', outro: 'Pet' };
 const SIZE: Record<string, string> = { pequeno: 'Pequeno', medio: 'Médio', grande: 'Grande' };
@@ -39,6 +40,12 @@ function ShareCard({ pet, address }: { pet: any; address?: string | null }) {
   const when = fmt(pet?.lost_date);
   // Aceita as duas formas: reward_amount (detalhe) e reward.amount (pins do mapa).
   const reward = money(pet?.reward_amount ?? pet?.reward?.amount);
+  // Doação: concorda o pronome com o sexo do pet (evita "ele" numa fêmea).
+  const cta = type === 'donation'
+    ? (pet?.sex === 'femea' ? 'Que tal dar um lar pra ela? Adote!'
+      : pet?.sex === 'macho' ? 'Que tal dar um lar pra ele? Adote!'
+      : 'Que tal dar um lar? Adote!')
+    : t.cta;
 
   return (
     <View style={styles.card}>
@@ -84,7 +91,7 @@ function ShareCard({ pet, address }: { pet: any; address?: string | null }) {
           </View>
         )}
 
-        <Text style={[styles.cta, { color: t.grad[1] }]}>{t.cta}</Text>
+        <Text style={[styles.cta, { color: t.grad[1] }]}>{cta}</Text>
       </View>
 
       <View style={styles.footer}>
@@ -101,6 +108,7 @@ function ShareCard({ pet, address }: { pet: any; address?: string | null }) {
 export function SharePetButton({ pet, address, style, label = 'Compartilhar' }: { pet: any; address?: string | null; style?: any; label?: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const insets = useSafeAreaInsets();
   const shotRef = useRef<ViewShot>(null);
 
   const doShare = async () => {
@@ -133,7 +141,7 @@ export function SharePetButton({ pet, address, style, label = 'Compartilhar' }: 
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <View style={styles.overlay}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Compartilhar publicação</Text>
               <TouchableOpacity onPress={() => setOpen(false)} hitSlop={10}>
