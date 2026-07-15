@@ -105,7 +105,7 @@ function ShareCard({ pet, address }: { pet: any; address?: string | null }) {
   );
 }
 
-export function SharePetButton({ pet, address, style, label = 'Compartilhar' }: { pet: any; address?: string | null; style?: any; label?: string }) {
+export function SharePetButton({ pet, address, style, label = 'Compartilhar', iconSize = 18 }: { pet: any; address?: string | null; style?: any; label?: string; iconSize?: number }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const insets = useSafeAreaInsets();
@@ -135,8 +135,8 @@ export function SharePetButton({ pet, address, style, label = 'Compartilhar' }: 
   return (
     <>
       <TouchableOpacity style={style ?? styles.trigger} activeOpacity={0.85} onPress={() => setOpen(true)}>
-        <Ionicons name="share-social" size={18} color="#FF4757" />
-        <Text style={styles.triggerText}>{label}</Text>
+        <Ionicons name="share-social" size={iconSize} color="#FF4757" />
+        {!!label && <Text style={styles.triggerText}>{label}</Text>}
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>

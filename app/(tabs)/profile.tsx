@@ -499,7 +499,7 @@ function PetCard({ pet, styles, onConfirm, onFindOwner, onCancel, onEdit, onPres
                 </TouchableOpacity>
               )}
               {petType === 'lost' && <RegionAlertButton petId={pet.id} compact style={styles.actionIconBtn} />}
-              <SharePetButton pet={pet} label="" style={styles.actionIconBtn} />
+              <SharePetButton pet={pet} label="" iconSize={20} style={styles.actionIconBtn} />
             </View>
             {/* Linha 2: ação principal (larga) + excluir */}
             <View style={styles.cardActionsMain}>

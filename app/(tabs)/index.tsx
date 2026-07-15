@@ -3854,7 +3854,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
     color: '#FFF',
-    flexShrink: 1,
+    flex: 1,
     letterSpacing: -0.3,
     textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 1 },
