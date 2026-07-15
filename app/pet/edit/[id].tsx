@@ -251,7 +251,7 @@ export default function EditPetScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F1F2F6' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F1F2F6' }} behavior={undefined}>
       <Modal visible={showMapPicker} animationType="slide">
         <View style={styles.mapModalContainer}>
           <MapView
@@ -298,7 +298,7 @@ export default function EditPetScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
         <View style={styles.formContainer}>
           {/* Foto principal */}
           <Text style={styles.sectionTitle}>Foto principal</Text>

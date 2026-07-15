@@ -159,10 +159,11 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.flex} behavior={undefined}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         bounces={false}

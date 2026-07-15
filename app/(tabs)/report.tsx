@@ -535,7 +535,7 @@ export default function ReportScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={undefined}>
       {/* Picker de localização no mapa */}
       <Modal visible={showMapPicker} animationType="slide" onRequestClose={() => setShowMapPicker(false)}>
         <View style={styles.mapModalContainer}>
@@ -609,7 +609,7 @@ export default function ReportScreen() {
         </View>
       </Modal>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets={true}>
         <LinearGradient
           colors={MODE_META[mode].colors}
           start={{ x: 0, y: 0 }}

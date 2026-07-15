@@ -269,7 +269,7 @@ export default function PrivacyScreen() {
 
       {/* Modal: Alterar senha */}
       <Modal visible={pwModal} transparent animationType="fade" onRequestClose={() => setPwModal(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalTitle}>Alterar senha</Text>

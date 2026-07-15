@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -112,7 +112,7 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={undefined}>
       <LinearGradient
         colors={['#FF6B81', '#FF4757']}
         start={{ x: 0, y: 0 }}
@@ -126,7 +126,11 @@ export default function EditProfileScreen() {
         <View style={{ width: 40 }} />
       </LinearGradient>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         <TouchableOpacity style={styles.avatarContainer} onPress={handlePickImage}>
           {photoUri || existingPhotoUrl ? (
             <Image source={{ uri: photoUri ?? existingPhotoUrl }} style={styles.avatar} />
