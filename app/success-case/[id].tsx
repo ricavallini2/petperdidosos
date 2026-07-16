@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator, Share,
+  StyleSheet, View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { getSuccessCase, getPetDetails, getDonationConfig, API_URL, SuccessCase } from '../../services/api';
+import { getSuccessCase, getPetDetails, SuccessCase } from '../../services/api';
 import { Avatar } from '../../components/Avatar';
+import { ShareSuccessButton } from '../../components/ShareSuccessButton';
 
 // ============================================================================
 // CASO DE SUCESSO — detalhe do final feliz (id = petId).
@@ -21,7 +22,6 @@ export default function SuccessCaseDetailScreen() {
   const [sc, setSc] = useState<SuccessCase | null>(null);
   const [pet, setPet] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [donationUrl, setDonationUrl] = useState(`${API_URL}/doar`);
 
   useEffect(() => {
     if (!petId) return;
@@ -39,18 +39,7 @@ export default function SuccessCaseDetailScreen() {
         setLoading(false);
       }
     })();
-    getDonationConfig().then((d) => { if (d.url) setDonationUrl(d.url); }).catch(() => {});
   }, [petId]);
-
-  const handleShare = () => {
-    const name = pet?.name ?? 'Um pet';
-    Share.share({
-      message:
-        `🎉 ${name} teve um final feliz com a ajuda do PetPerdidoSOS!\n\n` +
-        (sc?.message ? `“${sc.message}”\n\n` : '') +
-        `Veja mais casos de sucesso e ajude a manter o app no ar: ${donationUrl}`,
-    }).catch(() => {});
-  };
 
   if (loading) {
     return (
@@ -90,9 +79,7 @@ export default function SuccessCaseDetailScreen() {
           <Ionicons name="arrow-back" size={24} color="#2F3542" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Final feliz 🎉</Text>
-        <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-          <Ionicons name="share-social-outline" size={21} color="#2F3542" />
-        </TouchableOpacity>
+        <ShareSuccessButton sc={sc} pet={pet} label="" iconSize={21} style={styles.shareBtn} />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 50 }} showsVerticalScrollIndicator={false}>
@@ -162,10 +149,7 @@ export default function SuccessCaseDetailScreen() {
           <Ionicons name="document-text" size={19} color="#FFF" />
           <Text style={styles.caseBtnText}>Ver ficha completa do caso</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.shareFullBtn} activeOpacity={0.85} onPress={handleShare}>
-          <Ionicons name="share-social" size={18} color="#26B765" />
-          <Text style={styles.shareFullBtnText}>Compartilhar este final feliz</Text>
-        </TouchableOpacity>
+        <ShareSuccessButton sc={sc} pet={pet} label="Compartilhar este final feliz" style={styles.shareFullBtn} />
       </ScrollView>
     </View>
   );

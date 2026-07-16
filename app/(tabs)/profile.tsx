@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../services/supabase';
-import { getUserProfile, confirmRescue, cancelPet, transformToDonation, concludeDonation } from '../../services/api';
+import { getUserProfile, closePetWithoutFinder, cancelPet, transformToDonation, concludeDonation } from '../../services/api';
 import { toast, showConfirm } from '../../components/Feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PetCard } from '../../components/PetCard';
@@ -17,14 +17,13 @@ export default function ProfileScreen() {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Rescue Confirmation State
-  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
-  const [finderEmail, setFinderEmail] = useState('');
-  const [showRescueModal, setShowRescueModal] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  // Caso concluído na confirmação → abre o registro do final feliz depois que o
-  // modal fecha (nunca navegar durante o dismiss — congela no iOS).
-  const [pendingSuccessNav, setPendingSuccessNav] = useState<string | null>(null);
+  // Encerramento direto pelo alerta — NÃO indica quem ajudou (indicar alguém é
+  // sempre pelo chat, com dupla confirmação).
+  const [closingPet, setClosingPet] = useState<any>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  // Navegação adiada para depois do modal desmontar (nunca navegar durante o
+  // dismiss — congela no iOS).
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
 
   // Transformar resgate em doação
   const [donatePet, setDonatePet] = useState<{ id: string; name: string } | null>(null);
@@ -98,34 +97,27 @@ export default function ProfileScreen() {
     await supabase.auth.signOut();
   };
 
-  const handleConfirmRescueSubmit = async () => {
-    if (!selectedPetId || !user) return;
-    if (!finderEmail.trim()) {
-      toast.warning('Digite o e-mail do usuário que achou o pet.');
-      return;
-    }
-    
-    setIsConfirming(true);
+  // Encerra sem indicar usuário. found=true → registra o final feliz (a tela
+  // termina no convite de doação); found=false → leva direto ao Apoie o app.
+  const handleCloseWithoutFinder = async (found: boolean) => {
+    if (!closingPet || isClosing) return;
+    setIsClosing(true);
     try {
-      const result = await confirmRescue(selectedPetId, user.id, finderEmail);
-      setShowRescueModal(false);
-      setFinderEmail('');
-      if (result?.closed) {
-        // Caso concluído → tela de final feliz (Android navega direto; iOS espera o onDismiss)
-        setPendingSuccessNav(selectedPetId);
-        if (Platform.OS !== 'ios') {
-          const petId = selectedPetId;
-          setPendingSuccessNav(null);
-          setTimeout(() => router.push(`/pet/success/${petId}`), 80);
-        }
+      await closePetWithoutFinder(closingPet.id, found);
+      const dest = found ? `/pet/success/${closingPet.id}` : '/profile/apoiar';
+      setClosingPet(null);
+      if (Platform.OS === 'ios') {
+        // iOS: navega só no onDismiss do modal (senão congela a UI)
+        setPendingNav(dest);
       } else {
-        toast.success('Sua confirmação foi registrada. Aguardando quem resgatou confirmar para encerrar.', 'Quase lá! 🐾');
+        setTimeout(() => router.push(dest as any), 80);
       }
-      loadProfile(); // Reload data
+      if (!found) toast.success('Alerta encerrado.');
+      loadProfile();
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao confirmar resgate.');
+      toast.error(error.message || 'Erro ao encerrar o alerta.');
     } finally {
-      setIsConfirming(false);
+      setIsClosing(false);
     }
   };
 
@@ -215,7 +207,7 @@ export default function ProfileScreen() {
                 key={pet.id}
                 pet={pet}
                 onEdit={() => router.push(`/pet/edit/${pet.id}`)}
-                onConfirm={(pet.type ?? 'lost') === 'lost' ? () => { setSelectedPetId(pet.id); setShowRescueModal(true); } : undefined}
+                onConfirm={(pet.type ?? 'lost') === 'lost' ? () => setClosingPet(pet) : undefined}
                 onFindOwner={(pet.type === 'sighted' || pet.type === 'rescued') ? () => router.push({
                   pathname: '/match-owners',
                   params: { sourcePetId: pet.id, photo: pet.main_photo_url, lat: String(pet.latitude ?? ''), lng: String(pet.longitude ?? '') },
@@ -249,15 +241,19 @@ export default function ProfileScreen() {
         <View style={styles.menuContainer}>
           {/* Alertas já encerrados — os ativos continuam na seção acima. */}
           <MenuOption icon="time-outline" title="Histórico de alertas" iconColor="#FF4757" onPress={() => router.push('/profile/historico')} />
-          <MenuOption icon="heart-circle-outline" title="Pets para adoção" iconColor="#3B82F6" onPress={() => router.push('/doacao')} />
-          <MenuOption icon="trophy-outline" title="Casos de Sucesso" iconColor="#FFA502" onPress={() => router.push('/success-cases')} />
           <MenuOption icon="person-outline" title="Editar Perfil" iconColor="#FF4757" onPress={() => router.push('/profile/edit')} />
           <MenuOption icon="notifications-outline" title="Notificações" iconColor="#FF4757" onPress={() => router.push('/profile/notifications')} hasBadge />
+          <MenuOption icon="receipt-outline" title="Meus Chamados" iconColor="#FF4757" onPress={() => router.push('/profile/tickets')} />
+        </View>
+
+        <Text style={styles.sectionTitle}>Mais opções</Text>
+        <View style={styles.menuContainer}>
+          <MenuOption icon="heart-circle-outline" title="Pets para adoção" iconColor="#3B82F6" onPress={() => router.push('/doacao')} />
+          <MenuOption icon="trophy-outline" title="Casos de Sucesso" iconColor="#FFA502" onPress={() => router.push('/success-cases')} />
           <SupportMenuOption onPress={() => router.push('/profile/apoiar')} />
           <MenuOption icon="settings-outline" title="Configurações" iconColor="#FF4757" onPress={() => router.push('/profile/settings')} />
-          <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => router.push('/profile/privacy')} />
           <MenuOption icon="headset-outline" title="Central de Ajuda" iconColor="#FF4757" onPress={() => router.push('/support')} />
-          <MenuOption icon="receipt-outline" title="Meus Chamados" iconColor="#FF4757" onPress={() => router.push('/profile/tickets')} />
+          <MenuOption icon="shield-checkmark-outline" title="Privacidade e Segurança" iconColor="#FF4757" onPress={() => router.push('/profile/privacy')} />
         </View>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -268,55 +264,75 @@ export default function ProfileScreen() {
         <View style={{height: 120}} />
       </View>
 
-      {/* Rescue Confirmation Modal */}
+      {/* Encerrar alerta SEM indicar usuário (indicar quem ajudou = pelo chat) */}
       <Modal
-        visible={showRescueModal}
+        visible={!!closingPet}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowRescueModal(false)}
+        onRequestClose={() => setClosingPet(null)}
         onDismiss={() => {
           // iOS: navega só depois do modal desmontar (senão congela a UI)
-          if (pendingSuccessNav) {
-            const petId = pendingSuccessNav;
-            setPendingSuccessNav(null);
-            setTimeout(() => router.push(`/pet/success/${petId}`), 0);
+          if (pendingNav) {
+            const dest = pendingNav;
+            setPendingNav(null);
+            setTimeout(() => router.push(dest as any), 0);
           }
         }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Confirmar Resgate</Text>
-              <TouchableOpacity onPress={() => setShowRescueModal(false)}>
+              <Text style={styles.modalTitle}>Encerrar alerta</Text>
+              <TouchableOpacity onPress={() => setClosingPet(null)}>
                 <Ionicons name="close" size={24} color="#2F3542" />
               </TouchableOpacity>
             </View>
-            
-            <Text style={styles.modalDesc}>
-              Seu pet foi encontrado por alguém usando o app? Digite o e-mail dessa pessoa para registrar o reencontro. A recompensa é combinada diretamente entre vocês.
-            </Text>
-            
-            <View style={styles.inputWrapper}>
-              <Ionicons name="mail-outline" size={20} color="#A4B0BE" style={styles.inputIcon} />
-              <TextInput 
-                style={styles.input} 
-                placeholder="E-mail do herói..." 
-                autoCapitalize="none"
-                keyboardType="email-address"
-                value={finderEmail}
-                onChangeText={setFinderEmail}
-              />
+
+            <View style={styles.closeWarnBox}>
+              <Ionicons name="information-circle" size={20} color="#F79F1F" />
+              <Text style={styles.closeWarnText}>
+                Encerrar por aqui <Text style={{ fontWeight: '900' }}>não indica nenhum usuário</Text> como quem ajudou. Para reconhecer alguém que te ajudou, confirme o reencontro pelo chat da conversa com essa pessoa.
+              </Text>
             </View>
 
+            {(closingPet?.open_chats_count ?? 0) > 0 && (
+              <TouchableOpacity
+                style={styles.closeChatHint}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setClosingPet(null);
+                  if (Platform.OS === 'ios') setPendingNav('/(tabs)/chats');
+                  else setTimeout(() => router.push('/(tabs)/chats'), 80);
+                }}
+              >
+                <Ionicons name="chatbubbles" size={17} color="#3498DB" />
+                <Text style={styles.closeChatHintText}>
+                  Você tem {closingPet.open_chats_count} conversa{closingPet.open_chats_count > 1 ? 's' : ''} aberta{closingPet.open_chats_count > 1 ? 's' : ''} neste caso — toque para confirmar pelo chat.
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#3498DB" />
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.modalDesc}>Como terminou a busca por {closingPet?.name}?</Text>
+
             <TouchableOpacity
-              style={styles.modalSubmitBtn}
-              onPress={handleConfirmRescueSubmit}
-              disabled={isConfirming}
+              style={[styles.closeChoiceBtn, isClosing && { opacity: 0.6 }]}
+              disabled={isClosing}
+              onPress={() => handleCloseWithoutFinder(true)}
             >
-              <Text style={styles.modalSubmitText}>{isConfirming ? 'Processando...' : 'Transferir Recompensa'}</Text>
+              <Ionicons name="heart" size={19} color="#FFF" />
+              <Text style={styles.closeChoiceText}>Reencontrei meu pet 🎉</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.closeChoiceOutline, isClosing && { opacity: 0.6 }]}
+              disabled={isClosing}
+              onPress={() => handleCloseWithoutFinder(false)}
+            >
+              <Ionicons name="close-circle-outline" size={19} color="#747D8C" />
+              <Text style={styles.closeChoiceOutlineText}>Não reencontrei — encerrar alerta</Text>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Transformar resgate em doação */}
@@ -710,6 +726,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2F3542',
   },
+  // Encerrar sem indicar usuário
+  closeWarnBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#FFF6E5', borderRadius: 14, padding: 14, marginBottom: 12,
+  },
+  closeWarnText: { flex: 1, fontSize: 13, color: '#8A6D00', lineHeight: 19, fontWeight: '600' },
+  closeChatHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#EAF4FB', borderRadius: 14, padding: 13, marginBottom: 12,
+  },
+  closeChatHintText: { flex: 1, fontSize: 12.5, color: '#3498DB', fontWeight: '700', lineHeight: 18 },
+  closeChoiceBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#2ED573', height: 52, borderRadius: 16, marginTop: 4,
+    shadowColor: '#2ED573', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 3,
+  },
+  closeChoiceText: { color: '#FFF', fontSize: 15.5, fontWeight: '900' },
+  closeChoiceOutline: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#F1F2F6', height: 48, borderRadius: 16, marginTop: 10,
+  },
+  closeChoiceOutlineText: { color: '#747D8C', fontSize: 14.5, fontWeight: '800' },
+
   modalDesc: {
     fontSize: 14,
     color: '#747D8C',

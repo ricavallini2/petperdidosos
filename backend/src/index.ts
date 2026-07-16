@@ -3819,6 +3819,67 @@ app.post(
 );
 
 // ============================================================================
+// ENCERRAR SEM INDICAR USUÁRIO — o tutor encerra direto pelo alerta (perfil).
+// Não credita ninguém como quem ajudou (indicar alguém = dupla confirmação
+// pelo chat). found=true → 'encontrado' (habilita registrar o final feliz);
+// found=false → 'cancelado'. Chats abertos são fechados sem indicação.
+// ============================================================================
+app.post(
+  '/pets/:petId/close-without-finder',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const { petId } = req.params;
+    const userId = authedId(req);
+    const found = req.body?.found === true;
+
+    const { data: pet, error: petErr } = await supabase
+      .from('pets')
+      .select('id, user_id, status, name')
+      .eq('id', petId)
+      .single();
+    if (petErr || !pet) return res.status(404).json({ error: 'Pet não encontrado' });
+    if (pet.user_id !== userId) return res.status(403).json({ error: 'Apenas o tutor pode encerrar' });
+
+    // Transição atômica: se uma dupla confirmação fechar o caso ao mesmo tempo,
+    // só um dos caminhos vence.
+    const { data: transitioned } = await supabase
+      .from('pets')
+      .update({ status: found ? 'encontrado' : 'cancelado' })
+      .eq('id', petId)
+      .eq('status', 'ativo')
+      .select('id');
+    if (!transitioned || transitioned.length === 0) {
+      return res.status(400).json({ error: `Pet com status ${pet.status} não pode ser encerrado` });
+    }
+
+    const nowIso = new Date().toISOString();
+    await supabase
+      .from('chats')
+      .update({ status: 'closed', found: false, closed_at: nowIso })
+      .eq('pet_id', petId)
+      .eq('status', 'open');
+
+    // Recompensa é só informativa — marca como encerrada, sem movimentar dinheiro.
+    await supabase
+      .from('rewards')
+      .update({ status: 'refunded', refunded_at: nowIso })
+      .eq('pet_id', petId)
+      .in('status', ['pending', 'locked']);
+
+    if (found) {
+      await notifyUser(userId, {
+        title: 'Registre o final feliz! 🏆',
+        body: `${pet.name ?? 'Seu pet'} está de volta! Registre o final feliz para inspirar outros tutores.`,
+        type: 'success_case',
+        pet_id: petId,
+      });
+    }
+
+    res.json({ success: true, status: found ? 'encontrado' : 'cancelado' });
+  })
+);
+
+// ============================================================================
 // DOAÇÃO — transformar um pet resgatado em alerta de doação.
 // Exige os dois consentimentos (responsabilidade + já procurou o dono).
 // ============================================================================
@@ -4230,7 +4291,7 @@ app.get(
       .from('chats')
       .select(
         `id, pet_id, tutor_id, finder_id, status, found, closed_at, created_at, source_pet_id,
-         pets!chats_pet_id_fkey ( id, name, type, main_photo_url, status ),
+         pets!chats_pet_id_fkey ( id, name, type, main_photo_url, status, tutor_confirmed_at, finder_confirmed_at ),
          tutor:profiles!chats_tutor_id_fkey ( id, full_name, photo_url, show_profile_photo ),
          finder:profiles!chats_finder_id_fkey ( id, full_name, photo_url, show_profile_photo )`
       )
@@ -4486,15 +4547,19 @@ async function applyRescueConfirmation(params: {
 
   const nowIso = new Date().toISOString();
   // Marca a coluna da parte que confirma (só se ainda não marcada — idempotente).
-  await supabase
+  // O select devolve linha apenas quando o update de fato aconteceu: assim uma
+  // reconfirmação repetida não duplica system message nem notificação.
+  const { data: marked } = await supabase
     .from('pets')
     .update(isTutor ? { tutor_confirmed_at: nowIso } : { finder_confirmed_at: nowIso })
     .eq('id', petId)
-    .is(isTutor ? 'tutor_confirmed_at' : 'finder_confirmed_at', null);
+    .is(isTutor ? 'tutor_confirmed_at' : 'finder_confirmed_at', null)
+    .select('id');
+  const justMarked = !!marked && marked.length > 0;
 
   const { data: pet } = await supabase
     .from('pets')
-    .select('id, status, finder_confirmed_at, tutor_confirmed_at')
+    .select('id, name, status, finder_confirmed_at, tutor_confirmed_at')
     .eq('id', petId)
     .single();
   if (!pet) return { ok: false, status: 404, error: 'Pet não encontrado' };
@@ -4502,15 +4567,25 @@ async function applyRescueConfirmation(params: {
   const bothConfirmed = !!pet.finder_confirmed_at && !!pet.tutor_confirmed_at;
 
   if (!bothConfirmed) {
-    // Só uma parte confirmou → avisa a outra.
-    const otherId = isTutor ? finderId : tutorId;
-    await notifyUser(otherId, {
-      title: 'Confirme o reencontro 🐾',
-      body: `${isTutor ? 'O tutor' : 'Quem encontrou'} confirmou o reencontro. Confirme você também para encerrar o caso.`,
-      type: 'rescue_pending',
-      pet_id: petId,
-      ...(chatId ? { chat_id: chatId } : {}),
-    });
+    if (justMarked) {
+      // Registra no chat (a outra parte vê o card de confirmação inline) e avisa.
+      if (chatId) {
+        await supabase.from('messages').insert({
+          chat_id: chatId,
+          sender_id: confirmingUserId,
+          content: `✅ ${isTutor ? 'O tutor' : 'Quem ajudou'} confirmou o reencontro. Falta a outra parte confirmar para encerrar o caso.`,
+          system: true,
+        });
+      }
+      const otherId = isTutor ? finderId : tutorId;
+      await notifyUser(otherId, {
+        title: 'Confirme o reencontro 🐾',
+        body: `${isTutor ? 'O tutor' : 'Quem encontrou'} confirmou o reencontro. Confirme você também para encerrar o caso.`,
+        type: 'rescue_pending',
+        pet_id: petId,
+        ...(chatId ? { chat_id: chatId } : {}),
+      });
+    }
     return { ok: true, closed: false, waitingOn: isTutor ? 'finder' : 'tutor' };
   }
 
@@ -4546,6 +4621,16 @@ async function applyRescueConfirmation(params: {
       .eq('pet_id', petId)
       .in('status', ['pending', 'locked']);
 
+    // Fecho registrado na conversa (fica no histórico do chat encerrado).
+    if (chatId) {
+      await supabase.from('messages').insert({
+        chat_id: chatId,
+        sender_id: confirmingUserId,
+        content: '🏆 Reencontro confirmado pelos dois! O caso foi encerrado.',
+        system: true,
+      });
+    }
+
     await notifyUser(finderId, {
       title: 'Reencontro confirmado! 🎉',
       body: 'Obrigado por ajudar! Que tal avaliar essa experiência?',
@@ -4555,6 +4640,13 @@ async function applyRescueConfirmation(params: {
       title: 'Reencontro confirmado! 🎉',
       body: 'Caso encerrado. Que tal avaliar essa experiência?',
       type: 'rescue_confirmed', pet_id: petId, ...(chatId ? { chat_id: chatId } : {}),
+    });
+    // Convite para o tutor eternizar o caso (a notificação abre a tela de registro).
+    await notifyUser(tutorId, {
+      title: 'Registre o final feliz! 🏆',
+      body: `${pet.name ?? 'Seu pet'} está de volta! Registre o final feliz para inspirar outros tutores.`,
+      type: 'success_case',
+      pet_id: petId,
     });
   }
 

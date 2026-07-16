@@ -38,7 +38,9 @@ const TYPE_META: Record<string, { icon: any; color: string; bg: string }> = {
   donation_confirmed: { icon: 'home',                color: '#3B82F6', bg: '#EFF6FF' },
   donation_turn:      { icon: 'hand-left',           color: '#3B82F6', bg: '#EFF6FF' },
   donation_closed:    { icon: 'close-circle',        color: '#747D8C', bg: '#F1F2F6' },
+  rescue_pending:     { icon: 'checkmark-done-circle', color: '#F79F1F', bg: '#FFF6E5' },
   rescue_confirmed:   { icon: 'trophy',              color: '#2ED573', bg: '#E8F8F5' },
+  success_case:       { icon: 'trophy',              color: '#FFA502', bg: '#FFF6E5' },
   withdraw:           { icon: 'cash-outline',        color: '#FFA502', bg: '#FFF6E5' },
   reward:             { icon: 'gift',                color: '#2ED573', bg: '#E8F8F5' },
   support:            { icon: 'headset',             color: '#3498DB', bg: '#EAF4FB' },
@@ -124,8 +126,14 @@ export default function NotificationsScreen() {
       case 'donation_turn':
       case 'donation_closed':
         return chatLink('Abrir conversa');
+      case 'rescue_pending':
+        // A outra parte confirmou o reencontro — abre a conversa para confirmar.
+        return chatLink('Confirmar no chat');
       case 'rescue_confirmed':
         return n.pet_id ? { route: `/pet/case/${n.pet_id}`, label: 'Ver ficha do caso' } : null;
+      case 'success_case':
+        // Caso encerrado — leva direto ao registro do final feliz.
+        return n.pet_id ? { route: `/pet/success/${n.pet_id}` as Href, label: 'Registrar final feliz' } : null;
       case 'withdraw':
         return { route: '/profile/wallet', label: 'Ver carteira' };
       case 'support':

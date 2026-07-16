@@ -62,6 +62,9 @@ export default function ChatScreen() {
   // Confirmação de avistamento (chat vinculado a um alerta visto/resgatado)
   const [confirming, setConfirming] = useState(false);
   const [confirmedNow, setConfirmedNow] = useState(false);
+  // Reencontro (dupla confirmação): eu já confirmei nesta sessão — atualiza a UI
+  // na hora, sem esperar o próximo refresh da lista de chats.
+  const [rescueConfirmedNow, setRescueConfirmedNow] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [relatedPhoto, setRelatedPhoto] = useState<string | null>(null);
   const [relatedType, setRelatedType] = useState<string | null>(null); // tipo do alerta de origem (sighted/rescued)
@@ -299,6 +302,17 @@ export default function ChatScreen() {
   // Já confirmado? (mensagem de sistema do "avistamento adicionado ao caso" ou confirmação nesta sessão)
   const alreadyConfirmed = confirmedNow || messages.some((m: any) => m.system);
 
+  // Dupla confirmação do reencontro — o estado por lado (tutor/quem ajudou) vem
+  // do pet, exposto na lista de chats (tutor_confirmed_at / finder_confirmed_at).
+  const rcPet: any = (chat as any)?.pets;
+  const myRescueConfirmed = rescueConfirmedNow || (iAmTutor ? !!rcPet?.tutor_confirmed_at : !!rcPet?.finder_confirmed_at);
+  const otherRescueConfirmed = iAmTutor ? !!rcPet?.finder_confirmed_at : !!rcPet?.tutor_confirmed_at;
+  const rescueFlowApplies = !!chat && !chatClosed && rcPet?.type !== 'donation' && rcPet?.status === 'ativo';
+  // Card inline na conversa: a outra parte confirmou e falta a MINHA confirmação.
+  const showInlineRescueConfirm = rescueFlowApplies && otherRescueConfirmed && !myRescueConfirmed;
+  // Pílula de aguardo: eu confirmei e falta a outra parte.
+  const showRescueWaiting = rescueFlowApplies && myRescueConfirmed && !otherRescueConfirmed;
+
   // Card do alerta relacionado — renderizado dentro da conversa, após a 1ª mensagem.
   const relatedAlertCard = chat?.source_pet_id ? (
     <View style={styles.sourceCard}>
@@ -461,6 +475,7 @@ export default function ChatScreen() {
       setShowCloseModal(false);
       await fetchChat();
       if (result?.pending) {
+        setRescueConfirmedNow(true);
         toast.success('Sua confirmação foi registrada. Aguardando a outra pessoa confirmar para encerrar o caso.', 'Quase lá! 🐾');
         return;
       }
@@ -746,6 +761,37 @@ export default function ChatScreen() {
               </React.Fragment>
             );
           })
+        )}
+
+        {/* Reencontro: a outra parte confirmou — confirmação inline na conversa */}
+        {!isLoading && showInlineRescueConfirm && (
+          <View style={styles.rescueInlineCard}>
+            <View style={styles.rescueInlineHead}>
+              <Ionicons name="checkmark-done-circle" size={22} color="#20BF6B" />
+              <Text style={styles.rescueInlineTitle}>
+                {iAmTutor ? 'Quem ajudou confirmou o reencontro!' : 'O tutor confirmou o reencontro!'}
+              </Text>
+            </View>
+            <Text style={styles.rescueInlineText}>
+              Falta a sua confirmação para encerrar o caso de {rcPet?.name ?? 'este pet'}.
+            </Text>
+            <TouchableOpacity
+              style={[styles.rescueInlineBtn, isClosing && { opacity: 0.6 }]}
+              activeOpacity={0.9}
+              disabled={isClosing}
+              onPress={handleConfirmFound}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+              <Text style={styles.rescueInlineBtnText}>Confirmar reencontro 🎉</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {/* Reencontro: eu confirmei — aguardando a outra parte */}
+        {!isLoading && showRescueWaiting && (
+          <View style={styles.rescueWaitingPill}>
+            <Ionicons name="hourglass-outline" size={14} color="#F79F1F" />
+            <Text style={styles.rescueWaitingText}>Você confirmou o reencontro — aguardando a outra pessoa confirmar.</Text>
+          </View>
         )}
       </ScrollView>
 
@@ -1096,6 +1142,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, marginVertical: 10, maxWidth: '90%',
   },
   systemMsgText: { flex: 1, fontSize: 13, color: '#1B7A5A', fontWeight: '700', textAlign: 'center' },
+  // Card inline de confirmação do reencontro (a outra parte já confirmou)
+  rescueInlineCard: {
+    backgroundColor: '#FFF', borderRadius: 18, padding: 16, marginVertical: 10,
+    borderWidth: 1.5, borderColor: '#B6ECDD',
+    shadowColor: '#2ED573', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 3,
+  },
+  rescueInlineHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rescueInlineTitle: { flex: 1, fontSize: 15, fontWeight: '900', color: '#1B7A5A' },
+  rescueInlineText: { fontSize: 13.5, color: '#57606F', lineHeight: 19, marginTop: 6 },
+  rescueInlineBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    height: 48, borderRadius: 14, backgroundColor: '#2ED573', marginTop: 12,
+    shadowColor: '#2ED573', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  rescueInlineBtnText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
+  rescueWaitingPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
+    backgroundColor: '#FFF6E5', borderWidth: 1, borderColor: '#FFE3B3',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, marginVertical: 10, maxWidth: '90%',
+  },
+  rescueWaitingText: { flex: 1, fontSize: 12.5, color: '#8A6D00', fontWeight: '700', textAlign: 'center' },
   myMessage: { alignSelf: 'flex-end', backgroundColor: '#FF4757', borderBottomRightRadius: 4 },
   theirMessage: { alignSelf: 'flex-start', backgroundColor: '#FFF', borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
   messageText: { fontSize: 15, lineHeight: 20 },

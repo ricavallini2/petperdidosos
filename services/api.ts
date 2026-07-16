@@ -253,6 +253,22 @@ export const cancelPet = async (petId: string, userId: string) => {
   return response.json();
 };
 
+// Encerra o alerta direto pelo perfil, SEM indicar quem ajudou (indicar alguém
+// é sempre pelo chat, com dupla confirmação). found=true → 'encontrado';
+// found=false → 'cancelado'.
+export const closePetWithoutFinder = async (petId: string, found: boolean) => {
+  const response = await authedFetch(`${API_URL}/pets/${petId}/close-without-finder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ found }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
 export interface PetMatch {
   id: string;
   name: string;
@@ -900,27 +916,6 @@ export const getPublicProfile = async (userId: string): Promise<PublicProfile | 
   const response = await authedFetch(`${API_URL}/user/${userId}/public-profile`);
   if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
   return response.json();
-};
-
-export const confirmRescue = async (petId: string, tutorId: string, finderEmail: string) => {
-  try {
-    const response = await authedFetch(`${API_URL}/pets/${petId}/confirm-rescue`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ tutorId, finderEmail }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('Erro ao confirmar resgate:', error);
-    throw error;
-  }
 };
 
 export const getMessages = async (petId: string, userId1: string, userId2: string) => {
