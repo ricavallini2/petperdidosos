@@ -79,6 +79,20 @@ const aiLimiter = rateLimit({
 app.use(generalLimiter);
 
 // ============================================================================
+// FLAG GLOBAL — PREMIUM
+// ============================================================================
+// DESATIVADO: o app é 100% gratuito (buscas por IA ilimitadas, sem paywall).
+// No lugar, o app oferece a área "Apoie o app" (doação voluntária).
+//
+// Para reativar, volte para true — mas ANTES plugue um gateway de pagamento
+// real: /premium/subscribe ainda grava payment_method 'simulated' e liberaria
+// assinatura sem cobrar nada.
+//
+// Declarada aqui no topo (e não na seção PREMIUM, mais abaixo) porque também
+// gateia a concessão de premium pelo admin (/admin/subscriptions/grant).
+const PREMIUM_ENABLED = false;
+
+// ============================================================================
 // DISTRIBUIÇÃO DO APP (teste interno, fora da Play Store)
 // Serve o APK e o manifesto de versão de um diretório (APP_RELEASE_DIR). Para
 // lançar: suba o novo .apk e edite o version.json nesse diretório no VPS — sem
@@ -2175,6 +2189,18 @@ app.post(
   '/admin/subscriptions/grant',
   requireAdmin,
   asyncHandler(async (req, res) => {
+    // Com o premium desativado, conceder seria uma promessa vazia: o app ignora
+    // is_premium e já libera tudo para todos. Antes disto, o grant ainda gravava
+    // a assinatura e notificava "Premium ativado! ⭐ buscas ilimitadas" — um
+    // benefício que o backend não entrega. (Cancelar segue liberado, para o
+    // admin conseguir limpar registros antigos.)
+    if (!PREMIUM_ENABLED) {
+      return res.status(403).json({
+        error:
+          'Premium está desativado — o app é 100% gratuito e todos já têm os recursos liberados. Conceder uma assinatura não daria nenhum benefício ao usuário.',
+      });
+    }
+
     const { userId, planType } = req.body ?? {};
     if (!userId) return res.status(400).json({ error: 'userId obrigatório' });
     if (!['monthly', 'lifetime'].includes(planType)) {
@@ -5108,10 +5134,9 @@ app.post(
 // ============================================================================
 // PREMIUM — status, assinar, controle de uso de busca por IA
 // ============================================================================
-// DESATIVADO por enquanto: tudo liberado para todos (buscas por IA ilimitadas,
-// sem paywall). No lugar, o app oferece a área "Apoie o app" (doação voluntária).
-// Para reativar o premium, volte esta flag para true.
-const PREMIUM_ENABLED = false;
+// Gateado por PREMIUM_ENABLED (declarada no topo do arquivo). Hoje = false:
+// tudo liberado para todos (buscas por IA ilimitadas, sem paywall). No lugar,
+// o app oferece a área "Apoie o app" (doação voluntária).
 const AI_SEARCH_MONTHLY_LIMIT = 5;
 
 app.get(
@@ -5877,10 +5902,10 @@ PetPerdidoSOS conecta tutores de pets perdidos com buscadores voluntários da re
 - O app NÃO intermedia nem retém o pagamento e não cobra taxa
 - Ao encerrar um reencontro, o app pode sugerir uma doação voluntária para ajudar a manter o projeto (opcional)
 
-**Premium (R$ 9,90/mês):**
-- Reconhecimentos de IA ilimitados (o plano grátis tem limite)
-- Destaque no mapa com emblema dourado
-- Assine em Perfil → Premium
+**App 100% gratuito (NÃO existe plano pago):**
+- Todos os recursos são gratuitos, inclusive os reconhecimentos por IA, que são ilimitados
+- NÃO há assinatura, plano premium, mensalidade nem cobrança de nenhum tipo. Nunca ofereça um plano pago ao usuário
+- Quem quiser ajudar a manter o projeto no ar pode fazer uma doação voluntária em Perfil → "Apoie o app" (sempre opcional, nunca obrigatória)
 
 **Privacidade e Segurança (Perfil → Privacidade e Segurança):**
 - Aparecer ou não como buscador no mapa; mostrar ou ocultar a foto de perfil
