@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
-  StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Image,
-  ActivityIndicator, Switch, Linking, KeyboardAvoidingView, Platform,
+  StyleSheet, View, Text, TextInput, TouchableOpacity, Image,
+  ActivityIndicator, Switch, Linking,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -167,8 +168,14 @@ export default function SuccessCaseScreen() {
   const previewUri = photoUri || savedPhotoUrl || pet?.main_photo_url || null;
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      bottomOffset={24}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      showsVerticalScrollIndicator={false}
+    >
         <LinearGradient colors={['#2ED573', '#26B765']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <TouchableOpacity style={styles.closeBtn} onPress={() => setStep('thanks')}>
             <Ionicons name="close" size={22} color="#FFF" />
@@ -246,8 +253,7 @@ export default function SuccessCaseScreen() {
             <Text style={styles.skipBtnText}>Agora não</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 

@@ -69,7 +69,9 @@ function RootLayoutNav() {
 function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <KeyboardProvider>
+      {/* O app é edge-to-edge: sem estas flags a lib desconta a barra de navegação
+          da altura do teclado e o campo focado sobe com folga errada. */}
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
         <AuthProvider>
           <RootLayoutNav />
         </AuthProvider>

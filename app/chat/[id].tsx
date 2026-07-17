@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image, ActivityIndicator, Modal, Keyboard, Animated, Dimensions, Linking } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Platform, Image, ActivityIndicator, Modal, Keyboard, Animated, Dimensions, Linking } from 'react-native';
+// KeyboardAvoidingView da LIB (não o do react-native): dentro de <Modal> a lib
+// força SOFT_INPUT_ADJUST_NOTHING, então o do RN não funciona no Android.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -944,9 +947,17 @@ export default function ChatScreen() {
       </Modal>
 
       {/* Modal de denúncia */}
-      <Modal visible={showReportModal} transparent animationType="fade" onRequestClose={() => setShowReportModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+      <Modal
+        visible={showReportModal}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setShowReportModal(false)}
+      >
+        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            {/* Header fixo */}
             <View style={styles.reportHeader}>
               <View style={styles.reportIconWrap}>
                 <Ionicons name="flag" size={22} color="#FF4757" />
@@ -955,29 +966,37 @@ export default function ChatScreen() {
                 <Text style={styles.modalTitle}>Denunciar usuário</Text>
                 <Text style={styles.reportSubtitle} numberOfLines={1}>{reportTargetName}</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowReportModal(false)}>
+              <TouchableOpacity onPress={() => setShowReportModal(false)} hitSlop={8}>
                 <Ionicons name="close" size={22} color="#A4B0BE" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.reportLabel}>Descreva o motivo da denúncia</Text>
-            <TextInput
-              style={styles.reportInput}
-              placeholder="Ex: usuário pediu pagamento fora do app, comportamento suspeito, assédio..."
-              placeholderTextColor="#A4B0BE"
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              value={reportReason}
-              onChangeText={setReportReason}
-              maxLength={500}
-            />
-            <Text style={styles.reportCharCount}>{reportReason.length}/500</Text>
+            <ScrollView
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Text style={styles.reportLabel}>Descreva o motivo da denúncia</Text>
+              <TextInput
+                style={styles.reportInput}
+                placeholder="Ex: usuário pediu pagamento fora do app, comportamento suspeito, assédio..."
+                placeholderTextColor="#A4B0BE"
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                value={reportReason}
+                onChangeText={setReportReason}
+                maxLength={500}
+              />
+              <Text style={styles.reportCharCount}>{reportReason.length}/500</Text>
 
-            <Text style={styles.reportDisclaimer}>
-              Sua denúncia ficará em análise. Não identificaremos você ao usuário denunciado.
-            </Text>
+              <Text style={styles.reportDisclaimer}>
+                Sua denúncia ficará em análise. Não identificaremos você ao usuário denunciado.
+              </Text>
+            </ScrollView>
 
+            {/* Rodapé fixo */}
             <TouchableOpacity
               style={[styles.reportSubmitBtn, (!reportReason.trim() || isReporting) && { opacity: 0.5 }]}
               onPress={handleSubmitReport}
@@ -1000,6 +1019,8 @@ export default function ChatScreen() {
         visible={showRatingModal}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onDismiss={() => {
           // iOS: navegação pro final feliz só depois do modal desmontar
           if (goSuccessAfterRating) {
@@ -1008,48 +1029,55 @@ export default function ChatScreen() {
           }
         }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* Cabeçalho */}
-            <View style={{ alignItems: 'center', marginBottom: 4 }}>
-              <Avatar uri={otherProfile?.photo_url} size={72} style={styles.ratingAvatar} />
-              <Text style={styles.ratingTitle}>Como foi sua experiência?</Text>
-              <Text style={styles.ratingSubtitle}>{otherProfile?.full_name ?? 'a outra pessoa'}</Text>
-            </View>
+            <ScrollView
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {/* Cabeçalho */}
+              <View style={{ alignItems: 'center', marginBottom: 4 }}>
+                <Avatar uri={otherProfile?.photo_url} size={72} style={styles.ratingAvatar} />
+                <Text style={styles.ratingTitle}>Como foi sua experiência?</Text>
+                <Text style={styles.ratingSubtitle}>{otherProfile?.full_name ?? 'a outra pessoa'}</Text>
+              </View>
 
-            {/* Estrelas */}
-            <View style={styles.starsRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity key={star} onPress={() => setRatingScore(star)} activeOpacity={0.7}>
-                  <Ionicons
-                    name={star <= ratingScore ? 'star' : 'star-outline'}
-                    size={40}
-                    color={star <= ratingScore ? '#FFA502' : '#DFE4EA'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </View>
+              {/* Estrelas */}
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity key={star} onPress={() => setRatingScore(star)} activeOpacity={0.7}>
+                    <Ionicons
+                      name={star <= ratingScore ? 'star' : 'star-outline'}
+                      size={40}
+                      color={star <= ratingScore ? '#FFA502' : '#DFE4EA'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            {ratingScore > 0 && (
-              <Text style={styles.ratingScoreLabel}>
-                {['', 'Muito ruim', 'Ruim', 'Regular', 'Bom', 'Excelente!'][ratingScore]}
-              </Text>
-            )}
+              {ratingScore > 0 && (
+                <Text style={styles.ratingScoreLabel}>
+                  {['', 'Muito ruim', 'Ruim', 'Regular', 'Bom', 'Excelente!'][ratingScore]}
+                </Text>
+              )}
 
-            {/* Comentário opcional */}
-            <TextInput
-              style={styles.ratingInput}
-              placeholder="Deixe um comentário (opcional)..."
-              placeholderTextColor="#A4B0BE"
-              value={ratingComment}
-              onChangeText={setRatingComment}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-              maxLength={300}
-            />
+              {/* Comentário opcional */}
+              <TextInput
+                style={styles.ratingInput}
+                placeholder="Deixe um comentário (opcional)..."
+                placeholderTextColor="#A4B0BE"
+                value={ratingComment}
+                onChangeText={setRatingComment}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+                maxLength={300}
+              />
+            </ScrollView>
 
-            {/* Botões */}
+            {/* Botões — rodapé fixo */}
             <TouchableOpacity
               style={[styles.ratingSubmitBtn, ratingScore === 0 && { opacity: 0.4 }]}
               onPress={() => handleSubmitRating(false)}
@@ -1182,7 +1210,10 @@ const styles = StyleSheet.create({
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#FF4757', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFF', borderRadius: 24, padding: 24 },
+  // maxHeight: sem ele o card cresce além da tela e o rodapé renderiza FORA do
+  // fundo branco. O corpo (modalScroll) encolhe e rola quando bate no teto.
+  modalContent: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, maxHeight: '85%' },
+  modalScroll: { flexShrink: 1 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#2F3542', marginBottom: 8 },
   modalDesc: { fontSize: 14, color: '#747D8C', lineHeight: 20, marginBottom: 16 },
   modalInput: { backgroundColor: '#F1F2F6', borderRadius: 14, paddingHorizontal: 14, height: 50, fontSize: 15, color: '#2F3542', marginBottom: 14 },

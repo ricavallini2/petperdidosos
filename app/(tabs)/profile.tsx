@@ -1,5 +1,8 @@
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, Dimensions, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, Dimensions, ActivityIndicator, Modal, TextInput, Platform } from 'react-native';
+// KeyboardAvoidingView da LIB (não o do react-native): dentro de <Modal> a lib
+// força SOFT_INPUT_ADJUST_NOTHING, então o do RN não funciona no Android.
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -269,6 +272,8 @@ export default function ProfileScreen() {
         visible={!!closingPet}
         transparent
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => setClosingPet(null)}
         onDismiss={() => {
           // iOS: navega só depois do modal desmontar (senão congela a UI)
@@ -288,33 +293,40 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.closeWarnBox}>
-              <Ionicons name="information-circle" size={20} color="#F79F1F" />
-              <Text style={styles.closeWarnText}>
-                Encerrar por aqui <Text style={{ fontWeight: '900' }}>não indica nenhum usuário</Text> como quem ajudou. Para reconhecer alguém que te ajudou, confirme o reencontro pelo chat da conversa com essa pessoa.
-              </Text>
-            </View>
-
-            {(closingPet?.open_chats_count ?? 0) > 0 && (
-              <TouchableOpacity
-                style={styles.closeChatHint}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setClosingPet(null);
-                  if (Platform.OS === 'ios') setPendingNav('/(tabs)/chats');
-                  else setTimeout(() => router.push('/(tabs)/chats'), 80);
-                }}
-              >
-                <Ionicons name="chatbubbles" size={17} color="#3498DB" />
-                <Text style={styles.closeChatHintText}>
-                  Você tem {closingPet.open_chats_count} conversa{closingPet.open_chats_count > 1 ? 's' : ''} aberta{closingPet.open_chats_count > 1 ? 's' : ''} neste caso — toque para confirmar pelo chat.
+            <ScrollView
+              style={styles.modalScroll}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={styles.closeWarnBox}>
+                <Ionicons name="information-circle" size={20} color="#F79F1F" />
+                <Text style={styles.closeWarnText}>
+                  Encerrar por aqui <Text style={{ fontWeight: '900' }}>não indica nenhum usuário</Text> como quem ajudou. Para reconhecer alguém que te ajudou, confirme o reencontro pelo chat da conversa com essa pessoa.
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color="#3498DB" />
-              </TouchableOpacity>
-            )}
+              </View>
 
-            <Text style={styles.modalDesc}>Como terminou a busca por {closingPet?.name}?</Text>
+              {(closingPet?.open_chats_count ?? 0) > 0 && (
+                <TouchableOpacity
+                  style={styles.closeChatHint}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setClosingPet(null);
+                    if (Platform.OS === 'ios') setPendingNav('/(tabs)/chats');
+                    else setTimeout(() => router.push('/(tabs)/chats'), 80);
+                  }}
+                >
+                  <Ionicons name="chatbubbles" size={17} color="#3498DB" />
+                  <Text style={styles.closeChatHintText}>
+                    Você tem {closingPet.open_chats_count} conversa{closingPet.open_chats_count > 1 ? 's' : ''} aberta{closingPet.open_chats_count > 1 ? 's' : ''} neste caso — toque para confirmar pelo chat.
+                  </Text>
+                  <Ionicons name="chevron-forward" size={16} color="#3498DB" />
+                </TouchableOpacity>
+              )}
 
+              <Text style={styles.modalDesc}>Como terminou a busca por {closingPet?.name}?</Text>
+            </ScrollView>
+
+            {/* Rodapé fixo — as escolhas nunca saem do card */}
             <TouchableOpacity
               style={[styles.closeChoiceBtn, isClosing && { opacity: 0.6 }]}
               disabled={isClosing}
@@ -336,36 +348,54 @@ export default function ProfileScreen() {
       </Modal>
 
       {/* Transformar resgate em doação */}
-      <Modal visible={!!donatePet} transparent animationType="fade" onRequestClose={() => setDonatePet(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+      <Modal
+        visible={!!donatePet}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        onRequestClose={() => setDonatePet(null)}
+      >
+        <KeyboardAvoidingView behavior="padding" style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+            {/* Header fixo */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Doar {donatePet?.name}</Text>
-              <TouchableOpacity onPress={() => setDonatePet(null)}>
+              <TouchableOpacity onPress={() => setDonatePet(null)} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#2F3542" />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalDesc}>Descreva as regras para adoção e confirme os pontos abaixo.</Text>
+            {/* Corpo rolável: o campo cresce até o teto do card e passa a rolar,
+                em vez de empurrar o botão pra fora do box. */}
+            <ScrollView
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Text style={styles.modalDesc}>Descreva as regras para adoção e confirme os pontos abaixo.</Text>
 
-            <TextInput
-              style={[styles.input, { minHeight: 90, textAlignVertical: 'top', paddingTop: 12, borderWidth: 1, borderColor: '#DFE4EA', borderRadius: 14, paddingHorizontal: 14 }]}
-              placeholder="Ex: castração obrigatória, lar com tela, termo de adoção..."
-              placeholderTextColor="#A4B0BE"
-              value={donationRules}
-              onChangeText={setDonationRules}
-              multiline
-            />
+              <TextInput
+                style={[styles.input, { minHeight: 90, textAlignVertical: 'top', paddingTop: 12, borderWidth: 1, borderColor: '#DFE4EA', borderRadius: 14, paddingHorizontal: 14 }]}
+                placeholder="Ex: castração obrigatória, lar com tela, termo de adoção..."
+                placeholderTextColor="#A4B0BE"
+                value={donationRules}
+                onChangeText={setDonationRules}
+                multiline
+              />
 
-            <TouchableOpacity style={[styles.donConsent, consentResp && styles.donConsentOn]} activeOpacity={0.85} onPress={() => setConsentResp((v) => !v)}>
-              <View style={[styles.donBox, consentResp && styles.donBoxOn]}>{consentResp && <Ionicons name="checkmark" size={15} color="#FFF" />}</View>
-              <Text style={styles.donConsentText}>Entendo as responsabilidades de doar um pet</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.donConsent, consentSearched && styles.donConsentOn]} activeOpacity={0.85} onPress={() => setConsentSearched((v) => !v)}>
-              <View style={[styles.donBox, consentSearched && styles.donBoxOn]}>{consentSearched && <Ionicons name="checkmark" size={15} color="#FFF" />}</View>
-              <Text style={styles.donConsentText}>Já procurei o dono antes de doar</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={[styles.donConsent, consentResp && styles.donConsentOn]} activeOpacity={0.85} onPress={() => setConsentResp((v) => !v)}>
+                <View style={[styles.donBox, consentResp && styles.donBoxOn]}>{consentResp && <Ionicons name="checkmark" size={15} color="#FFF" />}</View>
+                <Text style={styles.donConsentText}>Entendo as responsabilidades de doar um pet</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.donConsent, consentSearched && styles.donConsentOn]} activeOpacity={0.85} onPress={() => setConsentSearched((v) => !v)}>
+                <View style={[styles.donBox, consentSearched && styles.donBoxOn]}>{consentSearched && <Ionicons name="checkmark" size={15} color="#FFF" />}</View>
+                <Text style={styles.donConsentText}>Já procurei o dono antes de doar</Text>
+              </TouchableOpacity>
+            </ScrollView>
 
+            {/* Rodapé fixo — sempre dentro do card */}
             <TouchableOpacity
               style={[styles.modalSubmitBtn, { backgroundColor: '#3B82F6' }]}
               onPress={handleSubmitDonation}
@@ -709,12 +739,17 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
     width: '100%',
+    // Teto de altura: sem isso o card cresce além da tela e os filhos (o botão
+    // do rodapé) renderizam FORA do fundo branco.
+    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 10,
   },
+  // Corpo rolável do modal: encolhe quando o card bate no maxHeight.
+  modalScroll: { flexShrink: 1 },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
