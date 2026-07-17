@@ -870,12 +870,15 @@ export const updateUserSettings = async (
   userId: string,
   patch: {
     show_on_map?: boolean;
-    notification_channel?: 'email' | 'whatsapp' | 'both' | 'none';
     default_search_radius_m?: number;
-    travel_mode?: 'walking' | 'driving' | 'bicycling' | 'transit';
     pin_color?: string;
     show_profile_photo?: boolean;
     region_alerts_enabled?: boolean;
+    // Preferências de push. Controlam só o push nativo — a notificação in-app
+    // é sempre criada. Alertas da região têm opt-in próprio (acima).
+    push_messages?: boolean;
+    push_case_activity?: boolean;
+    push_announcements?: boolean;
   }
 ) => {
   const response = await authedFetch(`${API_URL}/user/${userId}/settings`, {

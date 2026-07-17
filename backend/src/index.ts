@@ -4186,16 +4186,26 @@ app.post(
   requireUser,
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
-    const { show_on_map, notification_channel, default_search_radius_m, travel_mode, pin_color, show_profile_photo, region_alerts_enabled } = req.body ?? {};
+    // DEPRECADOS (travel_mode, notification_channel): saíram do app — o primeiro
+    // nunca afetou rota alguma, o segundo nunca foi lido (não há envio de e-mail
+    // nem de WhatsApp). APKs antigos ainda mandam os campos no body: ignoramos em
+    // silêncio, e as colunas continuam no banco justamente para não quebrá-los.
+    const {
+      show_on_map, default_search_radius_m, pin_color, show_profile_photo, region_alerts_enabled,
+      push_messages, push_case_activity, push_announcements,
+    } = req.body ?? {};
 
     const payload: Record<string, unknown> = {
       user_id: userId,
       show_on_map,
-      notification_channel,
       default_search_radius_m,
-      travel_mode,
       pin_color,
     };
+    // Booleanos de push: só entram no upsert quando enviados (undefined manteria
+    // o valor atual, mas escrever undefined explicitamente confunde o upsert).
+    if (push_messages !== undefined) payload.push_messages = !!push_messages;
+    if (push_case_activity !== undefined) payload.push_case_activity = !!push_case_activity;
+    if (push_announcements !== undefined) payload.push_announcements = !!push_announcements;
     if (region_alerts_enabled !== undefined) {
       payload.region_alerts_enabled = !!region_alerts_enabled;
       // Privacidade: ao DESLIGAR o opt-in, apaga a localização persistida.
@@ -4396,6 +4406,53 @@ async function sendExpoPush(
   }
 }
 
+// ============================================================================
+// PREFERÊNCIAS DE PUSH — o usuário escolhe em Perfil → Configurações.
+// Controlam SÓ o push nativo: a notificação in-app é sempre criada (a tela de
+// Notificações é o histórico dele). 'region_alert' não passa por aqui — tem
+// opt-in próprio (region_alerts_enabled) e é enviado no fan-out.
+// Tipos sem categoria (suporte, saque) são transacionais: sempre notificam.
+// ============================================================================
+const PUSH_CATEGORY: Record<string, 'messages' | 'case_activity' | 'announcements'> = {
+  message: 'messages',
+
+  sighting_match: 'case_activity',
+  sighting_claim: 'case_activity',
+  sighting_confirmed: 'case_activity',
+  rescue_pending: 'case_activity',
+  rescue_confirmed: 'case_activity',
+  success_case: 'case_activity',
+  donation: 'case_activity',
+  donation_confirmed: 'case_activity',
+  donation_turn: 'case_activity',
+  donation_closed: 'case_activity',
+  pet_paused: 'case_activity',
+  region_alert_paused: 'case_activity',
+
+  broadcast: 'announcements',
+  app_update: 'announcements',
+};
+
+const PUSH_COLUMN = {
+  messages: 'push_messages',
+  case_activity: 'push_case_activity',
+  announcements: 'push_announcements',
+} as const;
+
+async function isPushAllowed(userId: string, type?: string | null): Promise<boolean> {
+  const category = type ? PUSH_CATEGORY[type] : undefined;
+  if (!category) return true; // transacional
+  const column = PUSH_COLUMN[category];
+  const { data } = await supabase
+    .from('user_settings')
+    .select(column)
+    .eq('user_id', userId)
+    .maybeSingle();
+  // Sem linha (nunca abriu Configurações) ou erro → padrão LIGADO. Só corta o
+  // push quando o usuário desligou explicitamente.
+  return (data as Record<string, unknown> | null)?.[column] !== false;
+}
+
 // Cria a notificação no app E dispara o push nativo, numa só chamada.
 async function notifyUser(
   userId: string,
@@ -4419,6 +4476,7 @@ async function notifyUser(
       .from('chats').select('tutor_id, finder_id, status').eq('id', n.chat_id).maybeSingle();
     if (c) chatExtra = { chat_tutor_id: c.tutor_id, chat_finder_id: c.finder_id, chat_status: c.status };
   }
+  if (!(await isPushAllowed(userId, n.type))) return;
   await sendExpoPush(userId, n.title, n.body, {
     type: n.type, pet_id: n.pet_id, chat_id: n.chat_id, ticket_id: n.ticket_id, region_alert_id: n.region_alert_id, ...chatExtra,
   });
@@ -6006,7 +6064,10 @@ PetPerdidoSOS conecta tutores de pets perdidos com buscadores voluntários da re
 - Excluir a conta (apaga os dados permanentemente)
 
 **Configurações (Perfil → Configurações):**
-- Notificações de novos alertas, raio de busca padrão, modo de locomoção (para rotas) e cor do seu pino no mapa
+- Notificações no celular (push): novas mensagens, atividade nos meus casos, novidades do app. Desligar silencia só o aviso no celular — a notificação continua no sino, dentro do app
+- Alertas da minha região: avisa quando um pet some perto de você (precisa da permissão de localização)
+- Raio de busca padrão e cor do seu pino no mapa
+- IMPORTANTE: o app NÃO envia e-mail nem WhatsApp. As notificações são push no celular + o sino dentro do app. Nunca prometa aviso por e-mail ou WhatsApp.
 
 ## COMO RESPONDER
 - Seja empático: pets perdidos são situações estressantes para o tutor

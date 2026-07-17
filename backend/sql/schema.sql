@@ -25,6 +25,9 @@ create type chat_status           as enum ('open','closed');
 create type transaction_type      as enum ('deposit','escrow_hold','escrow_release','reward_received','withdraw','refund','fee');
 create type transaction_status    as enum ('pending','completed','failed');
 create type notification_channel  as enum ('email','whatsapp','both','none');
+-- DEPRECADO: travel_mode saiu da UI (a preferência nunca afetou rota alguma).
+-- Tipo e coluna MANTIDOS de propósito: APKs antigos ainda enviam o campo, e o
+-- backend passou a ignorá-lo. Não dropar sem folga de versões do app.
 create type travel_mode           as enum ('walking','driving','bicycling','transit');
 
 -- 3. TABLES
@@ -52,7 +55,7 @@ create table public.user_settings (
   show_on_map              boolean default true,
   notification_channel     notification_channel default 'email',
   default_search_radius_m  int default 5000 check (default_search_radius_m between 100 and 50000),
-  travel_mode              travel_mode default 'driving',
+  travel_mode              travel_mode default 'driving', -- DEPRECADO: não usado pelo app
   updated_at               timestamptz default now()
 );
 

@@ -9,27 +9,10 @@ import { getUserSettings, updateUserSettings, updateMyLocation } from '../../ser
 import { toast } from '../../components/Feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Channel = 'email' | 'whatsapp' | 'both' | 'none';
-type TravelMode = 'walking' | 'driving' | 'bicycling' | 'transit';
-
 const RADIUS_OPTIONS = [1000, 5000, 10000, 25000, 50000];
 
 const PIN_COLORS = ['#3498DB', '#FF4757', '#2ED573', '#A855F7', '#FFA502', '#FF6B81', '#1ABC9C', '#2F3542'];
 const DEFAULT_PIN_COLOR = '#3498DB';
-
-const CHANNELS: { value: Channel; label: string; icon: any }[] = [
-  { value: 'email', label: 'E-mail', icon: 'mail-outline' },
-  { value: 'whatsapp', label: 'WhatsApp', icon: 'logo-whatsapp' },
-  { value: 'both', label: 'Ambos', icon: 'notifications-outline' },
-  { value: 'none', label: 'Nenhum', icon: 'volume-mute-outline' },
-];
-
-const TRAVEL: { value: TravelMode; label: string; icon: any }[] = [
-  { value: 'walking', label: 'A pé', icon: 'walk-outline' },
-  { value: 'driving', label: 'Carro', icon: 'car-outline' },
-  { value: 'bicycling', label: 'Bike', icon: 'bicycle-outline' },
-  { value: 'transit', label: 'Ônibus', icon: 'bus-outline' },
-];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -38,11 +21,13 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [channel, setChannel] = useState<Channel>('email');
   const [radius, setRadius] = useState(5000);
-  const [travel, setTravel] = useState<TravelMode>('driving');
   const [pinColor, setPinColor] = useState(DEFAULT_PIN_COLOR);
   const [regionAlerts, setRegionAlerts] = useState(false);
+  // Push: padrão ligado (igual ao default do banco).
+  const [pushMessages, setPushMessages] = useState(true);
+  const [pushCaseActivity, setPushCaseActivity] = useState(true);
+  const [pushAnnouncements, setPushAnnouncements] = useState(true);
 
   useEffect(() => {
     if (!user) return;
@@ -50,11 +35,12 @@ export default function SettingsScreen() {
       try {
         const s = await getUserSettings(user.id);
         if (s) {
-          setChannel(s.notification_channel ?? 'email');
           setRadius(Number(s.default_search_radius_m ?? 5000));
-          setTravel(s.travel_mode ?? 'driving');
           setPinColor(s.pin_color ?? DEFAULT_PIN_COLOR);
           setRegionAlerts(!!s.region_alerts_enabled);
+          setPushMessages(s.push_messages !== false);
+          setPushCaseActivity(s.push_case_activity !== false);
+          setPushAnnouncements(s.push_announcements !== false);
         }
       } catch (e) {
         console.warn('Erro ao carregar config', e);
@@ -132,20 +118,37 @@ export default function SettingsScreen() {
           <Ionicons name="chevron-forward" size={20} color="#C7CDD4" />
         </TouchableOpacity>
 
-        {/* Notificações */}
-        <Text style={styles.sectionTitle}>Notificações de novos alertas</Text>
-        <View style={styles.optionsGrid}>
-          {CHANNELS.map((c) => (
-            <TouchableOpacity
-              key={c.value}
-              style={[styles.optionCard, channel === c.value && styles.optionCardActive]}
-              onPress={() => { setChannel(c.value); persist({ notification_channel: c.value }); }}
-            >
-              <Ionicons name={c.icon} size={22} color={channel === c.value ? '#FFF' : '#FF4757'} />
-              <Text style={[styles.optionLabel, channel === c.value && styles.optionLabelActive]}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
+        {/* Notificações push. Desligar aqui silencia só o aviso no celular — a
+            notificação continua aparecendo no sino, dentro do app. */}
+        <Text style={styles.sectionTitle}>Notificações no celular</Text>
+        <View style={styles.pushCard}>
+          <PushRow
+            icon="chatbubbles-outline"
+            title="Novas mensagens"
+            sub="Quando alguém responde no chat"
+            value={pushMessages}
+            onToggle={(v) => { setPushMessages(v); persist({ push_messages: v }); }}
+          />
+          <View style={styles.pushDivider} />
+          <PushRow
+            icon="paw-outline"
+            title="Atividade nos meus casos"
+            sub="Avistamentos, confirmações de reencontro e doações"
+            value={pushCaseActivity}
+            onToggle={(v) => { setPushCaseActivity(v); persist({ push_case_activity: v }); }}
+          />
+          <View style={styles.pushDivider} />
+          <PushRow
+            icon="megaphone-outline"
+            title="Novidades do app"
+            sub="Comunicados e avisos de atualização"
+            value={pushAnnouncements}
+            onToggle={(v) => { setPushAnnouncements(v); persist({ push_announcements: v }); }}
+          />
         </View>
+        <Text style={styles.pushHint}>
+          Mesmo desligadas, as notificações continuam no sino, dentro do app.
+        </Text>
 
         {/* Alertas de pets perdidos na região (opt-in) */}
         <Text style={styles.sectionTitle}>Alertas da minha região</Text>
@@ -178,21 +181,6 @@ export default function SettingsScreen() {
               <Text style={[styles.radiusText, radius === r && styles.radiusTextActive]}>
                 {r >= 1000 ? `${r / 1000}km` : `${r}m`}
               </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Locomoção */}
-        <Text style={styles.sectionTitle}>Modo de locomoção (para rotas)</Text>
-        <View style={styles.optionsGrid}>
-          {TRAVEL.map((t) => (
-            <TouchableOpacity
-              key={t.value}
-              style={[styles.optionCard, travel === t.value && styles.optionCardActive]}
-              onPress={() => { setTravel(t.value); persist({ travel_mode: t.value }); }}
-            >
-              <Ionicons name={t.icon} size={22} color={travel === t.value ? '#FFF' : '#FF4757'} />
-              <Text style={[styles.optionLabel, travel === t.value && styles.optionLabelActive]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -233,6 +221,26 @@ export default function SettingsScreen() {
   );
 }
 
+// Linha de preferência de push: ícone + título/descrição + toggle.
+function PushRow({ icon, title, sub, value, onToggle }: {
+  icon: any; title: string; sub: string; value: boolean; onToggle: (v: boolean) => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.pushRow} activeOpacity={0.7} onPress={() => onToggle(!value)}>
+      <View style={[styles.pushIcon, value && styles.pushIconOn]}>
+        <Ionicons name={icon} size={19} color={value ? '#FF4757' : '#A4B0BE'} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.pushTitle}>{title}</Text>
+        <Text style={styles.pushSub}>{sub}</Text>
+      </View>
+      <View style={[styles.toggle, value && styles.toggleOn]}>
+        <View style={[styles.toggleDot, value && styles.toggleDotOn]} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F2F6' },
   header: {
@@ -246,6 +254,23 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#FFF', letterSpacing: -0.3 },
 
   sectionTitle: { fontSize: 14, fontWeight: '800', color: '#747D8C', marginTop: 22, marginBottom: 10, marginLeft: 4, textTransform: 'uppercase' },
+
+  // Preferências de push
+  pushCard: {
+    backgroundColor: '#FFF', borderRadius: 16, paddingHorizontal: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+  },
+  pushRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
+  pushIcon: {
+    width: 38, height: 38, borderRadius: 12, backgroundColor: '#F1F2F6',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  pushIconOn: { backgroundColor: '#FFF0F1' },
+  pushTitle: { fontSize: 15, fontWeight: '800', color: '#2F3542' },
+  pushSub: { fontSize: 12.5, color: '#A4B0BE', fontWeight: '600', marginTop: 2, lineHeight: 17 },
+  pushDivider: { height: 1, backgroundColor: '#F1F2F6' },
+  pushHint: { fontSize: 12, color: '#A4B0BE', fontWeight: '600', marginTop: 8, marginLeft: 4, lineHeight: 17 },
+
   row: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
@@ -257,15 +282,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12,
   },
 
-  optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  optionCard: {
-    flexGrow: 1, flexBasis: '46%', height: 62, backgroundColor: '#FFF', borderRadius: 14,
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 8,
-    borderWidth: 1, borderColor: '#DFE4EA',
-  },
-  optionCardActive: { backgroundColor: '#FF4757', borderColor: '#FF4757' },
-  optionLabel: { fontSize: 14, color: '#2F3542', fontWeight: '700' },
-  optionLabelActive: { color: '#FFF' },
 
   raCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
   raTitle: { fontSize: 15, color: '#2F3542', fontWeight: '800', marginBottom: 3 },

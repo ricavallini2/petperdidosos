@@ -237,7 +237,10 @@ export default function MapScreen() {
   const [speciesFilter, setSpeciesFilter] = useState<'cachorro' | 'gato' | 'passaro' | 'outro' | null>(null);
   const [colorFilter, setColorFilter] = useState('');
   const [isLoadingPets, setIsLoadingPets] = useState(false);
+  // Raio inicial = "Raio de busca padrão" das Configurações (aplicado no 1º load,
+  // logo abaixo). O 5000 é só o valor até as settings chegarem.
   const [radius, setRadius] = useState(5000);
+  const defaultRadiusAppliedRef = useRef(false);
   const [showFilter, setShowFilter] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [detailsPet, setDetailsPet] = useState<any>(null);
@@ -471,6 +474,13 @@ export default function MapScreen() {
       if (s && typeof s.show_on_map === 'boolean') setShowOnMap(s.show_on_map);
       if (s) setShowProfilePhoto(s.show_profile_photo !== false);
       if (s?.pin_color) setPinColor(s.pin_color);
+      // Aplica o raio padrão UMA vez, no primeiro load. Depois disso quem manda
+      // é o usuário: reaplicar a cada foco desfaria o filtro manual do mapa e o
+      // raio ampliado que vem do deep-link da aba Alertas.
+      if (!defaultRadiusAppliedRef.current && s?.default_search_radius_m) {
+        defaultRadiusAppliedRef.current = true;
+        setRadius(Number(s.default_search_radius_m));
+      }
     }).catch(() => {});
   }, [user]));
 
