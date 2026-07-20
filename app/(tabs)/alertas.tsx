@@ -39,6 +39,12 @@ const SPECIES_FILTERS: { value: PetSpecies | 'all'; label: string }[] = [
   { value: 'outro', label: 'Outro' },
 ];
 const RADIUS_OPTIONS = [1000, 5000, 10000, 25000, 50000];
+// "Brasil todo": raio grande o bastante para cobrir o país a partir do centro.
+const BRAZIL_WIDE_RADIUS = 5000000;
+// Centro geográfico do Brasil — origem da busca quando NÃO há localização.
+// Só é usado com o raio "Brasil todo" (um raio pequeno a partir daqui não faria
+// sentido nenhum para o usuário).
+const BRAZIL_CENTER = { latitude: -14.235, longitude: -51.9253 };
 
 const formatBRL = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
 const speciesLabel = (s?: string | null) =>
@@ -56,6 +62,9 @@ export default function AlertasScreen() {
   const [loading, setLoading] = useState(false);
   const [radius, setRadius] = useState(5000);
   const [locationDenied, setLocationDenied] = useState(false);
+  // Ref espelhando locationDenied: o fetch das configurações roda em paralelo com
+  // a obtenção da localização e não pode sobrescrever o "Brasil todo".
+  const locationDeniedRef = useRef(false);
 
   const [activeTab, setActiveTab] = useState<PetType>('lost');
   const [speciesFilter, setSpeciesFilter] = useState<PetSpecies | 'all'>('all');
@@ -74,8 +83,17 @@ export default function AlertasScreen() {
   // Localização + raio padrão das configurações
   useEffect(() => {
     (async () => {
+      // Sem localização o raio relativo perde o sentido → cai para "Brasil todo",
+      // que busca a partir do centro do país e lista o app inteiro.
+      const fallbackToBrazil = () => {
+        locationDeniedRef.current = true;
+        setLocationDenied(true);
+        setRadius(BRAZIL_WIDE_RADIUS);
+      };
+
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { setLocationDenied(true); return; }
+      if (status !== 'granted') { fallbackToBrazil(); return; }
+      locationDeniedRef.current = false;
       setLocationDenied(false);
       // 1) Última posição conhecida (instantânea) → já dispara a 1ª busca rápido.
       let got = false;
@@ -94,29 +112,41 @@ export default function AlertasScreen() {
         if (timer) clearTimeout(timer);
         if (loc) { setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }); got = true; }
       } catch {}
-      // Sem nenhuma posição → mostra o estado acionável em vez de spinner infinito.
-      if (!got) setLocationDenied(true);
+      // Sem nenhuma posição (GPS sem fix) → mesmo tratamento da permissão negada.
+      if (!got) fallbackToBrazil();
     })();
     if (user) {
       getUserSettings(user.id)
-        .then((s) => { if (s?.default_search_radius_m) setRadius(Number(s.default_search_radius_m)); })
+        .then((s) => {
+          // O raio das configurações é relativo à posição do usuário: sem
+          // localização, não sobrescreve o "Brasil todo".
+          if (locationDeniedRef.current) return;
+          if (s?.default_search_radius_m) setRadius(Number(s.default_search_radius_m));
+        })
         .catch(() => {});
     }
   }, [user]);
 
+  // Origem da busca, por ordem de prioridade: endereço/CEP pesquisado → GPS →
+  // centro do Brasil (só quando o raio é "Brasil todo"). Antes, sem GPS a busca
+  // simplesmente não acontecia, mesmo com "Brasil todo" ou CEP selecionados.
+  const isBrazilWide = radius >= BRAZIL_WIDE_RADIUS;
+  const searchOrigin = searchCenter ?? location ?? (isBrazilWide ? BRAZIL_CENTER : null);
+  const originLat = searchOrigin?.latitude;
+  const originLng = searchOrigin?.longitude;
+
   const load = useCallback(async () => {
-    const center = searchCenter ?? location;
-    if (!center) return;
+    if (originLat == null || originLng == null) return;
     setLoading(true);
     try {
-      const data = await fetchNearbyPets(center.latitude, center.longitude, radius);
+      const data = await fetchNearbyPets(originLat, originLng, radius);
       setPets(data);
     } catch {
       // silencioso
     } finally {
       setLoading(false);
     }
-  }, [location, radius, searchCenter]);
+  }, [originLat, originLng, radius]);
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -349,7 +379,13 @@ export default function AlertasScreen() {
           </View>
         )}
 
-        <Text style={styles.filterLabel}>Raio de busca do seu local atual</Text>
+        <Text style={styles.filterLabel}>
+          {searchCenter
+            ? 'Raio de busca do endereço pesquisado'
+            : location
+              ? 'Raio de busca do seu local atual'
+              : 'Sem localização — busca em todo o Brasil'}
+        </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
           {RADIUS_OPTIONS.map((r) => (
             <TouchableOpacity
@@ -393,16 +429,32 @@ export default function AlertasScreen() {
         })}
       </View>
 
-      {locationDenied ? (
-        <View style={styles.empty}>
-          <Ionicons name="location-outline" size={48} color="#CED6E0" />
-          <Text style={styles.emptyText}>Ative a localização para ver os alertas perto de você.</Text>
-        </View>
-      ) : (!location || (loading && pets.length === 0)) ? (
+      {/* O bloqueio é por AUSÊNCIA DE ORIGEM, não por permissão negada: com
+          "Brasil todo" ou uma busca por CEP a lista funciona sem GPS. */}
+      {!searchOrigin ? (
+        locationDenied ? (
+          <View style={styles.empty}>
+            <Ionicons name="location-outline" size={48} color="#CED6E0" />
+            <Text style={styles.emptyText}>Sem acesso à localização</Text>
+            <Text style={styles.emptyHint}>
+              Você ainda pode ver os alertas de todo o país ou buscar por CEP/endereço nos filtros.
+            </Text>
+            <TouchableOpacity style={styles.emptyCta} onPress={() => setRadius(BRAZIL_WIDE_RADIUS)}>
+              <Ionicons name="earth" size={17} color="#FFF" />
+              <Text style={styles.emptyCtaText}>Ver alertas do Brasil todo</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.empty}>
+            <ActivityIndicator size="large" color="#FF4757" />
+            <Text style={styles.emptyText}>Obtendo sua localização...</Text>
+          </View>
+        )
+      ) : (loading && pets.length === 0) ? (
         <View style={styles.empty}>
           <ActivityIndicator size="large" color="#FF4757" />
           <Text style={styles.emptyText}>
-            {!location ? 'Obtendo sua localização...' : 'Buscando alertas na sua região...'}
+            {isBrazilWide && !location ? 'Buscando alertas no Brasil...' : 'Buscando alertas na sua região...'}
           </Text>
         </View>
       ) : (
@@ -431,14 +483,18 @@ export default function AlertasScreen() {
                       antes dizia sempre "com esses filtros", o que confundia
                       quem estava numa região sem nenhum alerta. */}
                   <Text style={styles.emptyText}>
-                    {radius >= 50000
-                      ? 'Nenhum alerta ativo nesta região'
-                      : 'Nenhum alerta por perto'}
+                    {isBrazilWide
+                      ? 'Nenhum alerta ativo no momento'
+                      : radius >= 50000
+                        ? 'Nenhum alerta ativo nesta região'
+                        : 'Nenhum alerta por perto'}
                   </Text>
                   <Text style={styles.emptyHint}>
-                    {radius >= 50000
-                      ? 'Ainda não há pets cadastrados aqui. Assim que alguém publicar um alerta na sua região, ele aparece nesta lista.'
-                      : 'Tente aumentar o raio de busca para ver alertas mais distantes.'}
+                    {isBrazilWide
+                      ? 'Ainda não há alertas publicados. Assim que alguém cadastrar um pet, ele aparece aqui.'
+                      : radius >= 50000
+                        ? 'Ainda não há pets cadastrados aqui. Assim que alguém publicar um alerta na sua região, ele aparece nesta lista.'
+                        : 'Tente aumentar o raio de busca para ver alertas mais distantes.'}
                   </Text>
                 </View>
               )
@@ -519,6 +575,12 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', padding: 50, gap: 10 },
   emptyText: { fontSize: 15.5, color: '#57606F', fontWeight: '800', textAlign: 'center' },
   emptyHint: { fontSize: 13, color: '#A4B0BE', fontWeight: '600', textAlign: 'center', lineHeight: 19, marginTop: -2 },
+  emptyCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#FF4757', paddingHorizontal: 20, height: 46, borderRadius: 14, marginTop: 6,
+    shadowColor: '#FF4757', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  emptyCtaText: { color: '#FFF', fontSize: 14.5, fontWeight: '900' },
   loadingBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 8, backgroundColor: '#FFF0F1',
