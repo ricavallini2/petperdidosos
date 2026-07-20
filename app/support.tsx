@@ -321,7 +321,7 @@ export default function SupportScreen() {
             <Text style={styles.fieldLabel}>Assunto *</Text>
             <TextInput
               style={styles.fieldInput}
-              placeholder="Ex: Não consigo sacar meu saldo"
+              placeholder="Ex: Não consigo publicar meu alerta"
               placeholderTextColor="#A4B0BE"
               value={ticketSubject}
               onChangeText={setTicketSubject}

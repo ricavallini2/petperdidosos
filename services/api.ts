@@ -973,87 +973,6 @@ export const updateUserProfile = async (
   }
 };
 
-// ============================================================================
-// PREMIUM
-// ============================================================================
-export interface PremiumStatus {
-  isPremium: boolean;
-  expiresAt: string | null;
-  plan: 'monthly' | 'lifetime' | null;
-  aiSearchesLeft: number | null;
-  aiSearchesUsed: number;
-  aiSearchesLimit: number;
-  premiumSettings: {
-    rewardMinAmount: number;
-    rewardMaxAmount: number | null;
-    alertEnabled: boolean;
-    highlightOnMap: boolean;
-  };
-}
-
-export const getPremiumStatus = async (userId: string): Promise<PremiumStatus> => {
-  const response = await authedFetch(`${API_URL}/user/${userId}/premium/status`);
-  if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
-  return response.json();
-};
-
-export const subscribePremium = async (userId: string, planType: 'monthly' | 'lifetime') => {
-  const response = await authedFetch(`${API_URL}/user/${userId}/premium/subscribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ planType }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as any).error || `Erro HTTP: ${response.status}`);
-  }
-  return response.json();
-};
-
-export const useAiSearchApi = async (
-  userId: string,
-  opts?: { checkOnly?: boolean },
-): Promise<{ allowed: boolean; aiSearchesLeft: number | null; isPremium: boolean; error?: string }> => {
-  try {
-    const response = await authedFetch(`${API_URL}/user/${userId}/ai-search/use`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ check_only: opts?.checkOnly ?? false }),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      // 402 = cota mensal esgotada: é um "não permitido" deliberado (→ paywall),
-      // NÃO um erro de conexão. Sem `error`, a tela cai no fluxo de paywall.
-      if (response.status === 402) {
-        return { allowed: false, aiSearchesLeft: 0, isPremium: false };
-      }
-      return { allowed: false, aiSearchesLeft: null, isPremium: false, error: err.error || `Erro HTTP: ${response.status}` };
-    }
-    return await response.json();
-  } catch (e: any) {
-    // Falha de rede: NÃO trava a tela nem mostra paywall por engano — sinaliza erro.
-    return { allowed: false, aiSearchesLeft: null, isPremium: false, error: e?.message || 'Falha de conexão' };
-  }
-};
-
-export const updatePremiumSettings = async (
-  userId: string,
-  settings: {
-    rewardMinAmount?: number;
-    rewardMaxAmount?: number | null;
-    alertEnabled?: boolean;
-    highlightOnMap?: boolean;
-  }
-) => {
-  const response = await authedFetch(`${API_URL}/user/${userId}/premium/settings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
-  });
-  if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
-  return response.json();
-};
-
 export const reportUser = async (params: {
   reporterId: string;
   reportedId: string;
@@ -1066,6 +985,44 @@ export const reportUser = async (params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+// ============================================================================
+// BLOQUEIO ENTRE USUÁRIOS — efeito bidirecional: nenhum dos dois consegue
+// abrir chat ou enviar mensagem ao outro.
+// ============================================================================
+export interface BlockedUser {
+  blocked_id: string;
+  created_at: string;
+  blocked?: { id: string; full_name: string | null; photo_url: string | null } | null;
+}
+
+export const listBlockedUsers = async (): Promise<BlockedUser[]> => {
+  const response = await authedFetch(`${API_URL}/me/blocks`);
+  if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
+  return response.json();
+};
+
+export const blockUser = async (userId: string) => {
+  const response = await authedFetch(`${API_URL}/me/blocks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Erro HTTP: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const unblockUser = async (userId: string) => {
+  const response = await authedFetch(`${API_URL}/me/blocks/${userId}`, { method: 'DELETE' });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(err.error || `Erro HTTP: ${response.status}`);

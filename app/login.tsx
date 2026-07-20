@@ -19,10 +19,12 @@ export const KEEP_LOGGED_IN_KEY = 'keepLoggedIn';
 // Marca, no cadastro, que o lembrete de completar o perfil deve aparecer no 1º acesso.
 export const COMPLETE_PROFILE_KEY = 'completeProfilePrompt';
 
+// "Recompensa segura" prometia custódia que o app explicitamente NÃO faz
+// (os Termos dizem que não intermedia pagamento) — trocado por algo verdadeiro.
 const FEATURES = [
   { icon: 'location', label: 'Mapa ao vivo' },
   { icon: 'sparkles', label: 'Busca por IA' },
-  { icon: 'shield-checkmark', label: 'Recompensa segura' },
+  { icon: 'people', label: 'Rede que ajuda' },
 ] as const;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

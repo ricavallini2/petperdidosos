@@ -4550,6 +4550,12 @@ app.post(
       return res.status(400).json({ error: 'receiverId e content/photo_url obrigatórios' });
     }
 
+    // Bloqueio (Guideline 1.2): vale nos DOIS sentidos e cobre também a criação
+    // do chat, já que getOrCreateChat acontece logo abaixo.
+    if (await isBlockedBetween(senderId, receiverId)) {
+      return res.status(403).json({ error: 'Não é possível enviar mensagens para este usuário.' });
+    }
+
     const chat = await getOrCreateChat(petId, senderId, receiverId);
 
     // Conversa encerrada não aceita novas mensagens (resposta limpa em vez do
@@ -5855,6 +5861,98 @@ app.post(
 // Ao atingir REPORTS_TO_PAUSE denúncias, o alerta é pausado, enviado para
 // análise do admin e o tutor é notificado.
 // ============================================================================
+
+// ============================================================================
+// BLOQUEIO ENTRE USUÁRIOS — App Store Review Guideline 1.2.
+// Efeito BIDIRECIONAL: se A bloqueia B, nenhum dos dois abre chat nem envia
+// mensagem ao outro. Diferente da denúncia (que é moderação) e do bloqueio
+// administrativo do painel (que é punição da plataforma).
+// ============================================================================
+
+// Ids que o usuário bloqueou OU que o bloquearam — usado para filtrar listas.
+async function blockedIdsFor(userId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('user_blocks')
+    .select('blocker_id, blocked_id')
+    .or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`);
+  const ids = new Set<string>();
+  (data ?? []).forEach((b: any) => {
+    ids.add(b.blocker_id === userId ? b.blocked_id : b.blocker_id);
+  });
+  return [...ids];
+}
+
+// Há bloqueio entre os dois (em qualquer direção)?
+async function isBlockedBetween(a: string, b: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('user_blocks')
+    .select('blocker_id')
+    .or(`and(blocker_id.eq.${a},blocked_id.eq.${b}),and(blocker_id.eq.${b},blocked_id.eq.${a})`)
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
+app.get(
+  '/me/blocks',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { data, error } = await supabase
+      .from('user_blocks')
+      .select('blocked_id, created_at, blocked:profiles!user_blocks_blocked_id_fkey ( id, full_name, photo_url, show_profile_photo )')
+      .eq('blocker_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    (data ?? []).forEach((b: any) => gateProfilePhoto(b.blocked));
+    res.json(data ?? []);
+  })
+);
+
+app.post(
+  '/me/blocks',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const blockedId = String(req.body?.userId ?? '').trim();
+    if (!blockedId) return res.status(400).json({ error: 'userId obrigatório' });
+    if (blockedId === userId) return res.status(400).json({ error: 'Você não pode bloquear a si mesmo' });
+
+    const { data: target } = await supabase.from('profiles').select('id').eq('id', blockedId).maybeSingle();
+    if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    // Idempotente: bloquear duas vezes não é erro.
+    const { error } = await supabase
+      .from('user_blocks')
+      .upsert({ blocker_id: userId, blocked_id: blockedId }, { onConflict: 'blocker_id,blocked_id' });
+    if (error) throw error;
+
+    // Encerra as conversas entre os dois (não dá para bloquear e seguir falando).
+    const nowIso = new Date().toISOString();
+    await supabase
+      .from('chats')
+      .update({ status: 'closed', closed_at: nowIso })
+      .eq('status', 'open')
+      .or(`and(tutor_id.eq.${userId},finder_id.eq.${blockedId}),and(tutor_id.eq.${blockedId},finder_id.eq.${userId})`);
+
+    res.json({ success: true });
+  })
+);
+
+app.delete(
+  '/me/blocks/:userId',
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const userId = authedId(req);
+    const { error } = await supabase
+      .from('user_blocks')
+      .delete()
+      .eq('blocker_id', userId)
+      .eq('blocked_id', req.params.userId);
+    if (error) throw error;
+    res.json({ success: true });
+  })
+);
+
 app.post(
   '/pets/:petId/report',
   requireUser,

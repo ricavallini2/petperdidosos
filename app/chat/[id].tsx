@@ -9,7 +9,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { requestMapFocus } from '../../utils/mapFocus';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, rateUser, confirmSighting, cancelChat, confirmDonation, getDonationQueue, getDonationConfig } from '../../services/api';
+import { getMessages, sendMessage, getPetDetails, listUserChats, closeChat, confirmRescueByChat, getPublicProfile, reportUser, blockUser, rateUser, confirmSighting, cancelChat, confirmDonation, getDonationQueue, getDonationConfig } from '../../services/api';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
@@ -535,6 +535,31 @@ export default function ChatScreen() {
     setShowReportModal(true);
   };
 
+  // Bloquear corta o contato nos dois sentidos e encerra a conversa.
+  const handleBlockUser = (targetProfile: any) => {
+    const targetId = targetProfile?.id;
+    const targetName = targetProfile?.full_name ?? 'este usuário';
+    if (!targetId) return;
+    setProfileToShow(null);
+    showConfirm({
+      title: `Bloquear ${targetName}?`,
+      message: 'Vocês não poderão mais trocar mensagens e esta conversa será encerrada. Você pode desbloquear depois em Perfil → Privacidade e Segurança.',
+      confirmText: 'Bloquear',
+      cancelText: 'Cancelar',
+      destructive: true,
+      icon: 'ban',
+      onConfirm: async () => {
+        try {
+          await blockUser(targetId);
+          toast.success(`${targetName} foi bloqueado.`);
+          router.back();
+        } catch (e: any) {
+          toast.error(e?.message ?? 'Não foi possível bloquear.');
+        }
+      },
+    });
+  };
+
   const handleSubmitReport = async () => {
     if (!user || !reportTargetId || !reportReason.trim()) return;
     try {
@@ -892,13 +917,6 @@ export default function ChatScreen() {
 
                 <Text style={styles.profileName}>{profileToShow.full_name ?? 'Usuário'}</Text>
 
-                {profileToShow.is_premium && (
-                  <View style={styles.profilePremium}>
-                    <Ionicons name="star" size={11} color="#FFF" />
-                    <Text style={styles.profilePremiumText}>Premium</Text>
-                  </View>
-                )}
-
                 <View style={styles.profileStatsRow}>
                   <View style={styles.profileStatCard}>
                     <Ionicons name="paw" size={20} color="#FFA502" />
@@ -930,15 +948,25 @@ export default function ChatScreen() {
                   </Text>
                 </View>
 
-                {/* Botão de denúncia — só para o outro participante */}
+                {/* Denunciar (moderação) e Bloquear (corta o contato) — só para
+                    o outro participante. Bloquear é exigência da App Store. */}
                 {profileToShow.id !== user?.id && (
-                  <TouchableOpacity
-                    style={styles.reportBtn}
-                    onPress={() => handleOpenReport(profileToShow)}
-                  >
-                    <Ionicons name="flag-outline" size={15} color="#FF4757" />
-                    <Text style={styles.reportBtnText}>Denunciar usuário</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      style={styles.reportBtn}
+                      onPress={() => handleOpenReport(profileToShow)}
+                    >
+                      <Ionicons name="flag-outline" size={15} color="#FF4757" />
+                      <Text style={styles.reportBtnText}>Denunciar usuário</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.blockBtn}
+                      onPress={() => handleBlockUser(profileToShow)}
+                    >
+                      <Ionicons name="ban-outline" size={15} color="#747D8C" />
+                      <Text style={styles.blockBtnText}>Bloquear usuário</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
             )}
@@ -1295,6 +1323,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF6F7',
   },
   reportBtnText: { fontSize: 13, fontWeight: '700', color: '#FF4757' },
+  blockBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: 10, alignSelf: 'center',
+    paddingHorizontal: 16, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: '#E4E8EC',
+    backgroundColor: '#F7F9FA',
+  },
+  blockBtnText: { fontSize: 13, fontWeight: '700', color: '#747D8C' },
 
   // Modal de denúncia
   reportHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },

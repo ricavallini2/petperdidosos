@@ -831,9 +831,12 @@ export default function MapScreen() {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        setErrorMsg('Permissão para acessar localização foi negada.');
+        // Sem permissão não há `location` — o guard do render mostra a tela de
+        // permissão negada. Antes isto virava um spinner infinito.
+        if (!cancelled) setErrorMsg('Permissão para acessar localização foi negada.');
         return;
       }
+      if (!cancelled) setErrorMsg(null);
       // Posição inicial rápida para o 1º render.
       try {
         const loc = await Location.getCurrentPositionAsync({});
@@ -1073,6 +1076,44 @@ export default function MapScreen() {
       if (camLoop) clearInterval(camLoop);
     };
   }, [followMode]);
+
+  // Permissão negada: estado acionável. NUNCA deixar o usuário preso no spinner
+  // (é também o 1º cenário que o revisor da App Store testa).
+  if (!location && errorMsg) {
+    return (
+      <View style={styles.permDeniedWrap}>
+        <View style={styles.permDeniedIcon}>
+          <Ionicons name="location-outline" size={44} color="#FF4757" />
+        </View>
+        <Text style={styles.permDeniedTitle}>Precisamos da sua localização</Text>
+        <Text style={styles.permDeniedText}>
+          O mapa mostra os pets perdidos perto de você. Sem a permissão de localização não
+          conseguimos saber onde procurar.
+        </Text>
+        <TouchableOpacity style={styles.permDeniedBtn} activeOpacity={0.85} onPress={() => Linking.openSettings()}>
+          <Ionicons name="settings-outline" size={19} color="#FFF" />
+          <Text style={styles.permDeniedBtnText}>Abrir Ajustes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.permDeniedAlt}
+          activeOpacity={0.7}
+          onPress={async () => {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+              setErrorMsg(null);
+              try { setLocation(await Location.getCurrentPositionAsync({})); } catch {}
+            }
+          }}
+        >
+          <Text style={styles.permDeniedAltText}>Tentar novamente</Text>
+        </TouchableOpacity>
+        {/* Saída sem localização: a lista de alertas funciona por busca manual. */}
+        <TouchableOpacity style={styles.permDeniedAlt} activeOpacity={0.7} onPress={() => router.push('/(tabs)/alertas')}>
+          <Text style={styles.permDeniedAltText}>Ver alertas sem usar minha localização</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (!location) {
     return (
@@ -1507,6 +1548,18 @@ export default function MapScreen() {
           </Text>
           <Ionicons name="options-outline" size={20} color="#2F3542" />
         </TouchableOpacity>
+
+        {/* Nenhum pet no raio: explica em vez de deixar o mapa mudo (parecia app
+            quebrado — é o que um revisor da App Store fora do Brasil veria). */}
+        {!isLoadingPets && pets.length === 0 && radius !== 5000000 && (
+          <TouchableOpacity style={styles.emptyMapBanner} activeOpacity={0.85} onPress={() => setShowFilter(true)}>
+            <Ionicons name="search-outline" size={18} color="#F79F1F" />
+            <Text style={styles.emptyMapText}>
+              Nenhum pet nesta região. Toque para ampliar o raio de busca.
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#F79F1F" />
+          </TouchableOpacity>
+        )}
 
         {/* Atalhos do SOS: ver em Lista e ir para Adoção (saíram da barra inferior) */}
         <View style={styles.sosQuickRow}>
@@ -3399,6 +3452,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+
+  // Aviso de mapa sem resultados no raio atual
+  emptyMapBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFF6E5', borderWidth: 1, borderColor: '#FFE3B3',
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, marginTop: 8,
+  },
+  emptyMapText: { flex: 1, fontSize: 12.5, color: '#8A6D00', fontWeight: '700', lineHeight: 17 },
+
+  // Permissão de localização negada — estado acionável (nunca spinner infinito)
+  permDeniedWrap: {
+    flex: 1, backgroundColor: '#F1F2F6',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 36,
+  },
+  permDeniedIcon: {
+    width: 96, height: 96, borderRadius: 48, backgroundColor: '#FFF',
+    justifyContent: 'center', alignItems: 'center', marginBottom: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3,
+  },
+  permDeniedTitle: { fontSize: 19, fontWeight: '900', color: '#2F3542', textAlign: 'center' },
+  permDeniedText: { fontSize: 14.5, color: '#747D8C', textAlign: 'center', lineHeight: 21, marginTop: 8 },
+  permDeniedBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 52, borderRadius: 16, backgroundColor: '#FF4757',
+    paddingHorizontal: 28, marginTop: 24,
+    shadowColor: '#FF4757', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
+  },
+  permDeniedBtnText: { color: '#FFF', fontSize: 15.5, fontWeight: '900' },
+  permDeniedAlt: { paddingVertical: 12, paddingHorizontal: 8 },
+  permDeniedAltText: { color: '#FF4757', fontSize: 14, fontWeight: '800' },
   map: {
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height,

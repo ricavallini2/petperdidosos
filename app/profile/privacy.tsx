@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../services/supabase';
-import { getUserSettings, updateUserSettings, deleteAccount } from '../../services/api';
+import { getUserSettings, updateUserSettings, deleteAccount, listBlockedUsers, unblockUser, BlockedUser } from '../../services/api';
 import { toast, showConfirm } from '../../components/Feedback';
 
 const PRIVACY_POLICY_URL = 'https://api.imestredigital.cloud/privacidade';
@@ -33,6 +33,18 @@ export default function PrivacyScreen() {
   const confirmPwRef = useRef<TextInput>(null);
 
   const [busy, setBusy] = useState(false);
+
+  // Usuários bloqueados (App Store Guideline 1.2 — precisa dar para desfazer)
+  const [blocked, setBlocked] = useState<BlockedUser[]>([]);
+  const [loadingBlocks, setLoadingBlocks] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    listBlockedUsers()
+      .then(setBlocked)
+      .catch(() => {})
+      .finally(() => setLoadingBlocks(false));
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -248,6 +260,48 @@ export default function PrivacyScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* USUÁRIOS BLOQUEADOS */}
+        <Text style={styles.sectionTitle}>Usuários bloqueados</Text>
+        <View style={styles.card}>
+          {loadingBlocks ? (
+            <View style={{ padding: 18 }}><ActivityIndicator color="#FF4757" /></View>
+          ) : blocked.length === 0 ? (
+            <View style={styles.blockEmpty}>
+              <Ionicons name="shield-checkmark-outline" size={20} color="#A4B0BE" />
+              <Text style={styles.blockEmptyText}>
+                Você não bloqueou ninguém. Para bloquear alguém, abra a conversa e toque no perfil da pessoa.
+              </Text>
+            </View>
+          ) : (
+            blocked.map((b) => (
+              <View key={b.blocked_id} style={styles.actionRow}>
+                <View style={styles.rowLabel}>
+                  <Ionicons name="ban-outline" size={20} color="#747D8C" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTitle}>{b.blocked?.full_name ?? 'Usuário'}</Text>
+                    <Text style={styles.rowSub}>Não pode te enviar mensagens</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.unblockBtn}
+                  activeOpacity={0.85}
+                  onPress={async () => {
+                    try {
+                      await unblockUser(b.blocked_id);
+                      setBlocked((prev) => prev.filter((x) => x.blocked_id !== b.blocked_id));
+                      toast.success('Usuário desbloqueado.');
+                    } catch (e: any) {
+                      toast.error(e?.message ?? 'Não foi possível desbloquear.');
+                    }
+                  }}
+                >
+                  <Text style={styles.unblockText}>Desbloquear</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+
         {/* ZONA DE RISCO */}
         <Text style={[styles.sectionTitle, { color: '#FF4757' }]}>Zona de risco</Text>
         <TouchableOpacity style={styles.dangerBtn} onPress={handleDeleteAccount} activeOpacity={0.85} disabled={busy}>
@@ -335,6 +389,15 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 15, color: '#2F3542', fontWeight: '700' },
   rowSub: { fontSize: 12, color: '#A4B0BE', marginTop: 2 },
   divider: { height: 1, backgroundColor: '#F1F2F6' },
+
+  // Usuários bloqueados
+  blockEmpty: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 16 },
+  blockEmptyText: { flex: 1, fontSize: 13, color: '#A4B0BE', fontWeight: '600', lineHeight: 18 },
+  unblockBtn: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#FFF0F1',
+  },
+  unblockText: { fontSize: 13, fontWeight: '800', color: '#FF4757' },
 
   dangerBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

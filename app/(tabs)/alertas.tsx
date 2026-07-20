@@ -427,7 +427,19 @@ export default function AlertasScreen() {
               loading ? null : (
                 <View style={styles.empty}>
                   <Ionicons name="paw-outline" size={48} color="#CED6E0" />
-                  <Text style={styles.emptyText}>Nenhum alerta com esses filtros</Text>
+                  {/* Distingue "sem cobertura na região" de "filtro restritivo" —
+                      antes dizia sempre "com esses filtros", o que confundia
+                      quem estava numa região sem nenhum alerta. */}
+                  <Text style={styles.emptyText}>
+                    {radius >= 50000
+                      ? 'Nenhum alerta ativo nesta região'
+                      : 'Nenhum alerta por perto'}
+                  </Text>
+                  <Text style={styles.emptyHint}>
+                    {radius >= 50000
+                      ? 'Ainda não há pets cadastrados aqui. Assim que alguém publicar um alerta na sua região, ele aparece nesta lista.'
+                      : 'Tente aumentar o raio de busca para ver alertas mais distantes.'}
+                  </Text>
                 </View>
               )
             }
@@ -505,7 +517,8 @@ const styles = StyleSheet.create({
   rewardChipText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
 
   empty: { alignItems: 'center', justifyContent: 'center', padding: 50, gap: 10 },
-  emptyText: { fontSize: 14, color: '#A4B0BE', fontWeight: '600', textAlign: 'center' },
+  emptyText: { fontSize: 15.5, color: '#57606F', fontWeight: '800', textAlign: 'center' },
+  emptyHint: { fontSize: 13, color: '#A4B0BE', fontWeight: '600', textAlign: 'center', lineHeight: 19, marginTop: -2 },
   loadingBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 8, backgroundColor: '#FFF0F1',

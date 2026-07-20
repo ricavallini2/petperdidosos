@@ -134,16 +134,13 @@ export default function NotificationsScreen() {
       case 'success_case':
         // Caso encerrado — leva direto ao registro do final feliz.
         return n.pet_id ? { route: `/pet/success/${n.pet_id}` as Href, label: 'Registrar final feliz' } : null;
-      case 'withdraw':
-        return { route: '/profile/wallet', label: 'Ver carteira' };
       case 'support':
         // Abre o chamado exato quando há referência; senão, a lista.
         return n.ticket_id
           ? { route: `/profile/ticket/${n.ticket_id}` as Href, label: 'Ver chamado' }
           : { route: '/profile/tickets', label: 'Ver meus chamados' };
-      case 'premium_activated':
-      case 'premium_cancelled':
-        return { route: '/profile/premium', label: 'Ver Premium' };
+      // 'withdraw', 'premium_activated' e 'premium_cancelled' não têm mais destino:
+      // Carteira e Premium saíram do app (notificações antigas ficam sem link).
       case 'pet_paused':
         return { route: '/(tabs)/profile', label: 'Ver meus alertas' };
       case 'region_alert':

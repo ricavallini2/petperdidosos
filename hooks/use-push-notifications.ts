@@ -91,7 +91,6 @@ export function usePushNotifications() {
       router.push(`/profile/ticket/${data.ticket_id}` as Href);
       return;
     }
-    if (type === 'withdraw') { router.push('/profile/wallet'); return; }
     // Lembrete de saúde (vacina/vermífugo/medicação...) → carteirinha do pet.
     if (type === 'health_reminder' && data.meuPetId) {
       router.push(`/meu-pet/${data.meuPetId}` as Href);

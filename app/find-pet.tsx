@@ -20,7 +20,7 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from '../components/Feedback';
 import { supabase } from '../services/supabase';
-import { matchPetByPhoto, submitMatchFeedback, PetMatch, useAiSearchApi } from '../services/api';
+import { matchPetByPhoto, submitMatchFeedback, PetMatch } from '../services/api';
 import { formatDistance } from '../utils/formatDistance';
 
 type SortMode = 'similarity' | 'distance';
@@ -49,8 +49,6 @@ export default function FindPetScreen() {
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('similarity');
   const [selected, setSelected] = useState<PetMatch | null>(null);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [aiSearchesLeft, setAiSearchesLeft] = useState<number | null>(null);
   // Guarda a foto enviada e o local da busca para reaproveitar no cadastro
   // de pet visto/resgatado quando nada é encontrado.
   const [searchPhotoUrl, setSearchPhotoUrl] = useState<string | null>(null);
@@ -79,18 +77,6 @@ export default function FindPetScreen() {
 
   const analyze = async () => {
     if (!photoUri || !user) return;
-
-    const check = await useAiSearchApi(user.id, { checkOnly: true });
-    if (!check.allowed && !check.error) {
-      // Cota mensal esgotada (não-premium): mostra o paywall, não erro.
-      setShowPaywall(true);
-      return;
-    }
-    if (check.error) {
-      toast.error('Não conseguimos iniciar a busca agora. Verifique sua conexão e tente novamente em instantes.', 'Erro temporário');
-      return;
-    }
-    if (check.aiSearchesLeft != null) setAiSearchesLeft(check.aiSearchesLeft);
 
     setAnalyzing(true);
     setResults(null);
@@ -125,10 +111,6 @@ export default function FindPetScreen() {
       const { searchId: sid, results: matches } = await matchPetByPhoto(publicUrl, lat, lng);
       setSearchId(sid);
       setResults(matches);
-      // Sucesso: só AGORA debita 1 busca (não-premium). Em falha, nada é debitado.
-      useAiSearchApi(user.id)
-        .then((u) => { if (u.aiSearchesLeft != null) setAiSearchesLeft(u.aiSearchesLeft); })
-        .catch(() => {});
     } catch (e: any) {
       toast.error(e?.message ?? 'Tente novamente.', 'Erro na análise');
     } finally {
@@ -203,18 +185,11 @@ export default function FindPetScreen() {
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Encontrei um Pet</Text>
-        {aiSearchesLeft != null ? (
-          <TouchableOpacity style={styles.searchCounter} onPress={() => router.push('/profile/premium')}>
-            <Ionicons name="sparkles" size={13} color="#FFA502" />
-            <Text style={styles.searchCounterText}>{aiSearchesLeft} restante{aiSearchesLeft !== 1 ? 's' : ''}</Text>
-          </TouchableOpacity>
-        ) : (
-          <ExpoImage
-            source={require('../logotipo/icon.png')}
-            style={styles.headerLogo}
-            contentFit="contain"
-          />
-        )}
+        <ExpoImage
+          source={require('../logotipo/icon.png')}
+          style={styles.headerLogo}
+          contentFit="contain"
+        />
       </LinearGradient>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
@@ -384,40 +359,6 @@ export default function FindPetScreen() {
           </View>
         )}
       </ScrollView>
-
-      {/* Paywall — limite de buscas atingido */}
-      <Modal visible={showPaywall} animationType="fade" transparent onRequestClose={() => setShowPaywall(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.paywallSheet}>
-            <View style={styles.paywallIconWrap}>
-              <Ionicons name="sparkles" size={36} color="#FFA502" />
-            </View>
-            <Text style={styles.paywallTitle}>Limite mensal atingido</Text>
-            <Text style={styles.paywallSub}>
-              Você usou todas as 5 buscas por IA gratuitas deste mês.
-              Assine o Premium e tenha buscas ilimitadas!
-            </Text>
-            <View style={styles.paywallFeatures}>
-              {['Buscas por IA ilimitadas', 'Alertas prioritários de recompensas', 'Destaque no mapa'].map((f) => (
-                <View key={f} style={styles.paywallFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={18} color="#2ED573" />
-                  <Text style={styles.paywallFeatureText}>{f}</Text>
-                </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              style={styles.paywallBtn}
-              onPress={() => { setShowPaywall(false); router.push('/profile/premium'); }}
-            >
-              <Ionicons name="star" size={18} color="#FFF" />
-              <Text style={styles.paywallBtnText}>Ver Premium — R$ 9,90/mês</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowPaywall(false)} style={{ alignItems: 'center', paddingTop: 12 }}>
-              <Text style={{ color: '#747D8C', fontWeight: '600', fontSize: 14 }}>Agora não</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* Modal de detalhes do match */}
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
@@ -606,30 +547,4 @@ const styles = StyleSheet.create({
   modalClose: { alignItems: 'center', paddingVertical: 14 },
   modalCloseText: { color: '#747D8C', fontWeight: '600' },
 
-  searchCounter: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: '#FFF6E5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10,
-  },
-  searchCounterText: { fontSize: 12, fontWeight: '700', color: '#FFA502' },
-
-  paywallSheet: {
-    backgroundColor: '#FFF', borderRadius: 28, padding: 28, alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10,
-  },
-  paywallIconWrap: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#FFF6E5',
-    justifyContent: 'center', alignItems: 'center', marginBottom: 16,
-  },
-  paywallTitle: { fontSize: 22, fontWeight: '900', color: '#2F3542', textAlign: 'center', marginBottom: 8 },
-  paywallSub: { fontSize: 14, color: '#747D8C', textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  paywallFeatures: { alignSelf: 'stretch', gap: 10, marginBottom: 24 },
-  paywallFeatureRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  paywallFeatureText: { fontSize: 14, fontWeight: '600', color: '#2F3542' },
-  paywallBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#FFA502', height: 54, borderRadius: 16,
-    justifyContent: 'center', alignSelf: 'stretch',
-    shadowColor: '#FFA502', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 4,
-  },
-  paywallBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
 });

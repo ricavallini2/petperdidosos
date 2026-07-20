@@ -69,14 +69,28 @@ export default function ApoiarScreen() {
           ))}
         </View>
 
-        {/* CTA */}
-        <TouchableOpacity style={styles.donateBtn} activeOpacity={0.85} onPress={() => Linking.openURL(donationUrl)}>
-          <Ionicons name="heart" size={20} color="#FFF" />
-          <Text style={styles.donateBtnText}>Fazer uma doação via Pix</Text>
-        </TouchableOpacity>
-        <Text style={styles.donateNote}>
-          Você escolhe o valor. O Pix é gerado no padrão do Banco Central e cai direto na conta do projeto — sem intermediários.
-        </Text>
+        {/* CTA — só aparece quando a doação está realmente configurada. Sem a
+            chave Pix o fluxo termina em erro (503), então é melhor não oferecer. */}
+        {donation.pixKey ? (
+          <>
+            <TouchableOpacity style={styles.donateBtn} activeOpacity={0.85} onPress={() => Linking.openURL(donationUrl)}>
+              <Ionicons name="heart" size={20} color="#FFF" />
+              <Text style={styles.donateBtnText}>Doar via Pix (abre no navegador)</Text>
+            </TouchableOpacity>
+            <Text style={styles.donateNote}>
+              Você escolhe o valor. O Pix é gerado no padrão do Banco Central e cai direto na conta do
+              projeto — sem intermediários. Doação voluntária ao PetPerdidoSOS, operado por Mestre
+              Digital Informática Ltda.
+            </Text>
+          </>
+        ) : (
+          <View style={styles.donateSoon}>
+            <Ionicons name="time-outline" size={19} color="#8A6D00" />
+            <Text style={styles.donateSoonText}>
+              As doações estarão disponíveis em breve. Obrigado pelo carinho! 💚
+            </Text>
+          </View>
+        )}
 
         {!!donation.pixKey && (
           <View style={styles.pixCard}>
@@ -142,6 +156,12 @@ const styles = StyleSheet.create({
   },
   donateBtnText: { color: '#FFF', fontSize: 16.5, fontWeight: '900' },
   donateNote: { fontSize: 12, color: '#A4B0BE', textAlign: 'center', marginTop: 10, lineHeight: 17, paddingHorizontal: 10 },
+  donateSoon: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FFF6E5', borderWidth: 1, borderColor: '#FFE3B3',
+    borderRadius: 16, padding: 16,
+  },
+  donateSoonText: { flex: 1, fontSize: 13.5, color: '#8A6D00', fontWeight: '700', lineHeight: 19 },
 
   pixCard: {
     flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#E8F8F0',
