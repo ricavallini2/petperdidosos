@@ -131,6 +131,9 @@ app.use(
 const LEGAL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '../legal');
 app.get('/privacidade', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'privacidade.html')));
 app.get('/termos', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'termos.html')));
+// Exigência da Google Play: página de exclusão de conta acessível na web,
+// sem precisar instalar o app.
+app.get('/excluir-conta', (_req, res) => res.sendFile(path.join(LEGAL_DIR, 'excluir-conta.html')));
 
 const PORT = Number(process.env.PORT ?? 3005);
 
@@ -4085,7 +4088,10 @@ app.get(
 
     const { data: profile, error: pErr } = await supabase
       .from('profiles')
-      .select('id, full_name, bio, cpf, phone, photo_url, pix_key, rating, rescues_count, wallet_balance, is_premium, premium_expires_at')
+      // cpf e pix_key saíram do select: o app não coleta mais esses dados
+      // (não há pagamento intermediado) e a Política de Privacidade afirma
+      // que não os coletamos — não devolvê-los evita reintroduzi-los na UI.
+      .select('id, full_name, bio, phone, photo_url, rating, rescues_count')
       .eq('id', userId)
       .maybeSingle();
     if (pErr) throw pErr;
@@ -4139,15 +4145,16 @@ app.post(
   requireUser,
   asyncHandler(async (req, res) => {
     const userId = authedId(req);
-    const { name, full_name, bio, photo_url, cpf, phone, pix_key } = req.body ?? {};
+    // cpf e pix_key NÃO são mais aceitos: sem pagamento intermediado eles não
+    // têm finalidade, e a Política de Privacidade afirma que não os coletamos.
+    // APKs antigos ainda podem enviá-los no body — ignoramos em silêncio.
+    const { name, full_name, bio, photo_url, phone } = req.body ?? {};
 
     const update: Record<string, unknown> = { id: userId };
     if (name || full_name) update.full_name = full_name ?? name;
     if (bio !== undefined) update.bio = bio;
     if (photo_url !== undefined) update.photo_url = photo_url;
-    if (cpf !== undefined) update.cpf = cpf;
     if (phone !== undefined) update.phone = phone;
-    if (pix_key !== undefined) update.pix_key = pix_key;
 
     const { data, error } = await supabase.from('profiles').upsert(update).select().single();
     if (error) throw error;

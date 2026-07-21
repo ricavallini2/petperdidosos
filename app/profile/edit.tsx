@@ -12,13 +12,9 @@ import { decode } from 'base64-arraybuffer';
 import { supabase } from '../../services/supabase';
 import { toast } from '../../components/Feedback';
 
-// Máscaras simples
-const maskCpf = (v: string) =>
-  v.replace(/\D/g, '').slice(0, 11)
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-
+// CPF e chave Pix saíram: o app não intermedia pagamento (a recompensa é
+// combinada e paga direto entre os usuários), então esses dados não têm mais
+// finalidade — e a Política de Privacidade afirma que não os coletamos.
 const maskPhone = (v: string) =>
   v.replace(/\D/g, '').slice(0, 11)
     .replace(/(\d{2})(\d)/, '($1) $2')
@@ -30,9 +26,7 @@ export default function EditProfileScreen() {
 
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
-  const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
-  const [pixKey, setPixKey] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
@@ -45,9 +39,7 @@ export default function EditProfileScreen() {
         const data = await getUserProfile(user.id);
         setName(data?.full_name ?? data?.name ?? '');
         setBio(data?.bio ?? '');
-        setCpf(data?.cpf ?? '');
         setPhone(data?.phone ?? '');
-        setPixKey(data?.pix_key ?? '');
         setExistingPhotoUrl(data?.photo_url ?? undefined);
       } catch (e) {
         console.warn('Não foi possível carregar perfil', e);
@@ -91,9 +83,7 @@ export default function EditProfileScreen() {
         full_name: name.trim(),
         bio: bio.trim(),
         photo_url: photoUrlPatch,
-        cpf: cpf.replace(/\D/g, '') || undefined,
         phone: phone.replace(/\D/g, '') || undefined,
-        pix_key: pixKey.trim() || undefined,
       });
       toast.success('Perfil atualizado!');
       router.back();
@@ -171,22 +161,6 @@ export default function EditProfileScreen() {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>CPF</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="card-outline" size={20} color="#A4B0BE" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="000.000.000-00"
-              placeholderTextColor="#A4B0BE"
-              value={cpf}
-              onChangeText={(t) => setCpf(maskCpf(t))}
-              keyboardType="numeric"
-              maxLength={14}
-            />
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
           <Text style={styles.label}>Celular</Text>
           <View style={styles.inputWrapper}>
             <Ionicons name="call-outline" size={20} color="#A4B0BE" style={styles.inputIcon} />
@@ -198,21 +172,6 @@ export default function EditProfileScreen() {
               onChangeText={(t) => setPhone(maskPhone(t))}
               keyboardType="phone-pad"
               maxLength={15}
-            />
-          </View>
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Chave PIX (para receber recompensas)</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="cash-outline" size={20} color="#A4B0BE" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="CPF, e-mail, celular ou chave aleatória"
-              placeholderTextColor="#A4B0BE"
-              value={pixKey}
-              onChangeText={setPixKey}
-              autoCapitalize="none"
             />
           </View>
         </View>

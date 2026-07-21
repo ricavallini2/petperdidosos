@@ -954,9 +954,9 @@ export const updateUserProfile = async (
     name?: string; // alias compat
     bio?: string;
     photo_url?: string;
-    cpf?: string;
     phone?: string;
-    pix_key?: string;
+    // cpf e pix_key foram removidos: o app não intermedia pagamento, então
+    // esses dados não têm finalidade (e a política afirma que não os coletamos).
   }
 ) => {
   try {
