@@ -189,6 +189,10 @@ export function UsuarioDetalhe() {
         <Stat label="Telefone" value={p.phone ?? '—'} />
         <Stat label="Avaliação" value={p.rating ? `${p.rating} ★` : '—'} />
         <Stat label="Resgates" value={String(p.rescues_count)} />
+        <Stat
+          label="Último acesso"
+          value={p.last_sign_in_at ? fmtDateTime(p.last_sign_in_at) : 'Nunca entrou'}
+        />
         <Stat label="Membro desde" value={fmtDate(p.created_at)} />
       </div>
       {p.bio && (

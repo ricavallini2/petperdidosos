@@ -5,6 +5,23 @@ import { exportToCsv } from '../lib/csv';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR');
 
+// Último acesso em tempo relativo — pra avaliar atividade, "há 3 dias" diz
+// mais que uma data crua. A data exata fica no title (tooltip).
+function lastSeen(iso: string | null): { text: string; title: string; stale: boolean } {
+  if (!iso) return { text: 'Nunca entrou', title: 'Nunca fez login', stale: true };
+  const d = new Date(iso);
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  const title = d.toLocaleString('pt-BR');
+  if (days <= 0) {
+    const h = Math.floor((Date.now() - d.getTime()) / 3600000);
+    return { text: h <= 0 ? 'Agora há pouco' : `Há ${h} h`, title, stale: false };
+  }
+  if (days === 1) return { text: 'Ontem', title, stale: false };
+  if (days < 30) return { text: `Há ${days} dias`, title, stale: days > 14 };
+  const months = Math.floor(days / 30);
+  return { text: months === 1 ? 'Há 1 mês' : `Há ${months} meses`, title, stale: true };
+}
+
 const USER_STATUS_LABEL: Record<string, string> = {
   active: 'Ativo',
   blocked: 'Bloqueado',
@@ -68,6 +85,11 @@ export function Usuarios() {
               { header: 'Telefone', value: (u) => u.phone ?? '' },
               { header: 'Status', value: (u) => u.status },
               { header: 'Resgates', value: (u) => u.rescues_count },
+              {
+                header: 'Último acesso',
+                value: (u) =>
+                  u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString('pt-BR') : 'Nunca',
+              },
               { header: 'Cadastro', value: (u) => new Date(u.created_at).toLocaleDateString('pt-BR') },
             ])
           }
@@ -123,6 +145,7 @@ export function Usuarios() {
             <th>Contato</th>
             <th>Status</th>
             <th className="num">Resgates</th>
+            <th>Último acesso</th>
             <th>Cadastro</th>
           </tr>
         </thead>
@@ -171,6 +194,14 @@ export function Usuarios() {
                   </span>
                 </td>
                 <td className="num">{u.rescues_count}</td>
+                {(() => {
+                  const s = lastSeen(u.last_sign_in_at);
+                  return (
+                    <td title={s.title} className={s.stale ? 'muted-text' : undefined}>
+                      {s.text}
+                    </td>
+                  );
+                })()}
                 <td>{fmtDate(u.created_at)}</td>
               </tr>
             ))

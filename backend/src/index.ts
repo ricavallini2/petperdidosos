@@ -1690,11 +1690,17 @@ app.get(
     const { data: profiles, error } = await pq;
     if (error) throw error;
 
-    // E-mails vêm do Supabase Auth (não ficam em profiles)
+    // E-mail e último acesso vêm do Supabase Auth (não ficam em profiles).
+    // last_sign_in_at já vem no mesmo objeto — sem custo extra de consulta.
     const { data: authData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const emailMap = new Map((authData?.users ?? []).map((u) => [u.id, u.email ?? null]));
+    const authMap = new Map(
+      (authData?.users ?? []).map((u) => [u.id, { email: u.email ?? null, lastSignInAt: u.last_sign_in_at ?? null }])
+    );
 
-    let rows = (profiles ?? []).map((p) => ({ ...p, email: emailMap.get(p.id) ?? null }));
+    let rows = (profiles ?? []).map((p) => {
+      const a = authMap.get(p.id);
+      return { ...p, email: a?.email ?? null, last_sign_in_at: a?.lastSignInAt ?? null };
+    });
 
     // Busca textual (nome / e-mail / CPF / telefone) aplicada em memória
     if (q) {
@@ -1791,7 +1797,11 @@ app.get(
     });
 
     res.json({
-      profile: { ...profile, email: authUser?.user?.email ?? null },
+      profile: {
+        ...profile,
+        email: authUser?.user?.email ?? null,
+        last_sign_in_at: authUser?.user?.last_sign_in_at ?? null,
+      },
       petsAsTutor: petsRes.data ?? [],
       casesAsFinder,
       transactions,

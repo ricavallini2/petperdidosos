@@ -151,6 +151,8 @@ export interface AdminUserRow {
   rating: number;
   wallet_balance: number;
   created_at: string;
+  /** Último login (vem do Supabase Auth). null = nunca entrou. */
+  last_sign_in_at: string | null;
 }
 
 export interface AdminUsersPage {
@@ -187,6 +189,8 @@ export interface UserDetail {
     status_reason: string | null;
     status_changed_at: string | null;
     created_at: string;
+    /** Último login (Supabase Auth). null = nunca entrou. */
+    last_sign_in_at: string | null;
   };
   petsAsTutor: { id: string; name: string; status: string; created_at: string }[];
   casesAsFinder: {
