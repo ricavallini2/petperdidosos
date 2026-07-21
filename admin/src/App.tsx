@@ -4,10 +4,8 @@ import { useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
-import { Financeiro } from './pages/Financeiro';
 import { Chamados } from './pages/Chamados';
 import { ChamadoDetalhe } from './pages/ChamadoDetalhe';
-import { Assinaturas } from './pages/Assinaturas';
 import { Usuarios } from './pages/Usuarios';
 import { UsuarioDetalhe } from './pages/UsuarioDetalhe';
 import { Casos } from './pages/Casos';
@@ -62,10 +60,8 @@ export function App() {
         <Route path="/doacoes" element={<Doacoes />} />
         <Route path="/doacoes/:id" element={<DoacaoDetalhe />} />
         <Route path="/avistamentos" element={<Avistamentos />} />
-        <Route path="/financeiro" element={<Financeiro />} />
         <Route path="/chamados" element={<Chamados />} />
         <Route path="/chamados/:id" element={<ChamadoDetalhe />} />
-        <Route path="/assinaturas" element={<Assinaturas />} />
         <Route path="/usuarios" element={<Usuarios />} />
         <Route path="/usuarios/:id" element={<UsuarioDetalhe />} />
         <Route path="/comunicados" element={<Comunicados />} />

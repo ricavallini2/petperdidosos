@@ -32,7 +32,7 @@ export function Usuarios() {
       .finally(() => setLoading(false));
   }, [applied, page]);
 
-  const set = (k: 'q' | 'status' | 'premium' | 'admin', value: string) =>
+  const set = (k: 'q' | 'status' | 'admin', value: string) =>
     setDraft((d) => ({ ...d, [k]: value || undefined }));
   const applyFilters = () => {
     setPage(0);
@@ -67,7 +67,6 @@ export function Usuarios() {
               { header: 'CPF', value: (u) => u.cpf ?? '' },
               { header: 'Telefone', value: (u) => u.phone ?? '' },
               { header: 'Status', value: (u) => u.status },
-              { header: 'Plano', value: (u) => (u.is_premium ? 'Premium' : 'Free') },
               { header: 'Resgates', value: (u) => u.rescues_count },
               { header: 'Cadastro', value: (u) => new Date(u.created_at).toLocaleDateString('pt-BR') },
             ])
@@ -98,14 +97,6 @@ export function Usuarios() {
           </select>
         </label>
         <label>
-          Plano
-          <select value={draft.premium ?? ''} onChange={(e) => set('premium', e.target.value)}>
-            <option value="">Todos</option>
-            <option value="true">Premium</option>
-            <option value="false">Free</option>
-          </select>
-        </label>
-        <label>
           Perfil
           <select value={draft.admin ?? ''} onChange={(e) => set('admin', e.target.value)}>
             <option value="">Todos</option>
@@ -131,7 +122,6 @@ export function Usuarios() {
             <th>Usuário</th>
             <th>Contato</th>
             <th>Status</th>
-            <th>Plano</th>
             <th className="num">Resgates</th>
             <th>Cadastro</th>
           </tr>
@@ -180,7 +170,6 @@ export function Usuarios() {
                     {USER_STATUS_LABEL[u.status] ?? u.status}
                   </span>
                 </td>
-                <td>{u.is_premium ? 'Premium' : 'Free'}</td>
                 <td className="num">{u.rescues_count}</td>
                 <td>{fmtDate(u.created_at)}</td>
               </tr>

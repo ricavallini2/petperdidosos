@@ -45,13 +45,6 @@ export function Dashboard() {
   const actions = data
     ? [
         {
-          key: 'withdraw',
-          count: data.withdrawPendingCount,
-          label: 'Saques a processar',
-          detail: BRL.format(data.withdrawPendingTotal),
-          to: '/financeiro',
-        },
-        {
           key: 'reports',
           count: data.openReports,
           label: 'Denúncias abertas',
@@ -79,7 +72,7 @@ export function Dashboard() {
     <div className="page">
       <h1>Visão geral</h1>
       <p className="page-desc">
-        Panorama operacional do PetPerdidoSOS — pessoas, casos, atendimento e receita.
+        Panorama operacional do PetPerdidoSOS — pessoas, casos e atendimento.
       </p>
 
       {error && <div className="alert error">{error}</div>}
@@ -107,15 +100,6 @@ export function Dashboard() {
         <div className="card-grid">
           <Card label="Usuários" value={num(data?.users)} />
           <Card label="Ativos (últimas 24h)" value={num(data?.activeUsers24h)} />
-          <Card
-            label="Assinantes Premium"
-            value={num(data?.premiumActive)}
-            sub={
-              data?.premiumLifetime != null
-                ? `${data.premiumLifetime} vitalício(s)`
-                : undefined
-            }
-          />
         </div>
       </section>
 
@@ -138,11 +122,16 @@ export function Dashboard() {
         </div>
       </section>
 
+      {/* Recompensa é apenas informativa: combinada e paga direto entre os
+          usuários, fora do app. Não há receita, taxa nem valor em garantia. */}
       <section className="fin-section">
-        <h2>Receita</h2>
+        <h2>Recompensas anunciadas</h2>
         <div className="card-grid">
-          <Card label="Receita do mês" value={brl(data?.revenueMonth)} />
-          <Card label="Recompensas em garantia" value={brl(data?.activeRewardsTotal)} />
+          <Card
+            label="Total anunciado em casos ativos"
+            value={brl(data?.activeRewardsTotal)}
+            sub="Valor informativo — pago direto entre os usuários"
+          />
         </div>
       </section>
     </div>

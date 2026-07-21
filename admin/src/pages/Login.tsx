@@ -2,7 +2,7 @@ import { useState, FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function Login() {
-  const { signIn, session } = useAuth();
+  const { signIn, session, loading, verifyFailed } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -30,9 +30,16 @@ export function Login() {
         </div>
         <p className="login-sub">Acesso restrito à administração</p>
 
-        {session && (
+        {/* Só acusa falta de permissão depois que a verificação terminou e NÃO
+            falhou por rede — antes, o aviso piscava em todo login válido. */}
+        {session && !loading && !verifyFailed && (
           <div className="alert">
             Esta conta está autenticada, mas não tem permissão de administrador.
+          </div>
+        )}
+        {verifyFailed && (
+          <div className="alert error">
+            Não foi possível falar com o servidor. Verifique sua conexão e tente novamente.
           </div>
         )}
 

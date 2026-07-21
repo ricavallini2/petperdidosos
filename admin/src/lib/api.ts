@@ -22,9 +22,20 @@ async function authFetch(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Erro HTTP ${res.status}`);
+    // O status vai junto: quem chama precisa distinguir "sem permissão" (401/403)
+    // de "backend fora do ar" (5xx) — tratar os dois igual derrubava o admin.
+    throw new ApiError(body.error || `Erro HTTP ${res.status}`, res.status);
   }
   return res.json();
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
 }
 
 export interface AdminProfile {
@@ -717,32 +728,6 @@ export const api = {
   // Métricas resumidas do dashboard.
   overview: (): Promise<AdminOverview> => authFetch('/admin/overview'),
 
-  // Financeiro — resumo consolidado.
-  financeSummary: (): Promise<FinanceSummary> => authFetch('/admin/finance/summary'),
-
-  // Financeiro — extrato (group: 'rewards' ou 'revenue') com filtros.
-  financeLedger: (filters: LedgerFilters): Promise<LedgerPage> => {
-    const qs = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
-    });
-    return authFetch('/admin/finance/ledger?' + qs.toString());
-  },
-
-  // Financeiro — lista de saques (PIX).
-  withdrawals: (status?: string): Promise<Withdrawal[]> =>
-    authFetch('/admin/finance/withdrawals' + (status ? `?status=${status}` : '')),
-
-  // Financeiro — marca um saque como pago ou recusado.
-  settleWithdrawal: (
-    id: string,
-    action: 'paid' | 'rejected'
-  ): Promise<{ success: boolean }> =>
-    authFetch(`/admin/finance/withdrawals/${id}/settle`, {
-      method: 'POST',
-      body: JSON.stringify({ action }),
-    }),
-
   // Configurações — lê doação + parâmetros de reconhecimento.
   settings: (): Promise<AppSettings> => authFetch('/admin/settings'),
 
@@ -819,33 +804,6 @@ export const api = {
   suggestTicketReply: (id: string): Promise<{ suggestion: string }> =>
     authFetch(`/admin/tickets/${id}/suggest-reply`, { method: 'POST' }),
 
-  // Assinaturas — resumo (KPIs).
-  subscriptionsSummary: (): Promise<SubscriptionsSummary> =>
-    authFetch('/admin/subscriptions/summary'),
-
-  // Assinaturas — lista com filtros.
-  subscriptions: (filters: SubscriptionsFilters = {}): Promise<SubscriptionsPage> => {
-    const qs = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
-    });
-    const query = qs.toString();
-    return authFetch('/admin/subscriptions' + (query ? `?${query}` : ''));
-  },
-
-  // Assinaturas — cancela uma assinatura (revoga o premium).
-  cancelSubscription: (id: string): Promise<{ success: boolean }> =>
-    authFetch(`/admin/subscriptions/${id}/cancel`, { method: 'POST' }),
-
-  // Assinaturas — concede premium a um usuário como cortesia.
-  grantPremium: (
-    userId: string,
-    planType: 'monthly' | 'lifetime'
-  ): Promise<{ success: boolean }> =>
-    authFetch('/admin/subscriptions/grant', {
-      method: 'POST',
-      body: JSON.stringify({ userId, planType }),
-    }),
 
   // Casos — lista de pets (perdidos, vistos, resgatados) com filtros.
   casos: (filters: CasosFilters = {}): Promise<CasosPage> => {

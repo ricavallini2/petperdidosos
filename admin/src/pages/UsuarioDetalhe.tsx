@@ -140,7 +140,6 @@ export function UsuarioDetalhe() {
             <span className={`badge badge-${p.status}`}>
               {USER_STATUS_LABEL[p.status] ?? p.status}
             </span>
-            {p.is_premium && <span className="badge badge-completed">Premium</span>}
             {p.is_admin && <span className="badge badge-pending">Administrador</span>}
           </div>
         </div>
@@ -184,22 +183,12 @@ export function UsuarioDetalhe() {
       )}
 
       <div className="card-grid">
+        {/* Chave PIX e carteira saíram: o app não intermedia pagamento, então
+            esses dados não têm mais finalidade aqui (dado sensível sem uso). */}
         <Stat label="CPF" value={p.cpf ?? '—'} />
         <Stat label="Telefone" value={p.phone ?? '—'} />
-        <Stat label="Chave PIX" value={p.pix_key ?? '—'} />
-        <Stat label="Carteira" value={brl(p.wallet_balance)} />
         <Stat label="Avaliação" value={p.rating ? `${p.rating} ★` : '—'} />
         <Stat label="Resgates" value={String(p.rescues_count)} />
-        <Stat
-          label="Plano"
-          value={
-            p.is_premium
-              ? p.premium_expires_at
-                ? `Premium até ${fmtDate(p.premium_expires_at)}`
-                : 'Premium vitalício'
-              : 'Free'
-          }
-        />
         <Stat label="Membro desde" value={fmtDate(p.created_at)} />
       </div>
       {p.bio && (
@@ -279,74 +268,9 @@ export function UsuarioDetalhe() {
         )}
       </section>
 
-      <section className="fin-section">
-        <h2>
-          Histórico financeiro{' '}
-          <span className="count-pill">{data.transactions.length}</span>
-        </h2>
-        {data.transactions.length === 0 ? (
-          <p className="empty-state">Nenhuma transação.</p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Tipo</th>
-                <th>Caso</th>
-                <th className="num">Valor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.transactions.map((t) => (
-                <tr key={t.id}>
-                  <td>{fmtDateTime(t.created_at)}</td>
-                  <td>{TX_TYPE_LABEL[t.type] ?? t.type}</td>
-                  <td>{t.pet?.name ?? '—'}</td>
-                  <td className={`num ${t.amount >= 0 ? 'amount-pos' : 'amount-neg'}`}>
-                    {brl(t.amount)}
-                  </td>
-                  <td>
-                    <span className={`badge badge-${t.status}`}>{t.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-
-      <section className="fin-section">
-        <h2>
-          Assinaturas premium <span className="count-pill">{data.premium.length}</span>
-        </h2>
-        {data.premium.length === 0 ? (
-          <p className="empty-state">Nunca assinou o premium.</p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Plano</th>
-                <th className="num">Valor</th>
-                <th>Status</th>
-                <th>Início</th>
-                <th>Expira</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.premium.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.plan_type === 'lifetime' ? 'Vitalício' : 'Mensal'}</td>
-                  <td className="num">{brl(s.amount)}</td>
-                  <td>{s.status}</td>
-                  <td>{fmtDate(s.starts_at)}</td>
-                  <td>{s.expires_at ? fmtDate(s.expires_at) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      {/* Histórico financeiro e assinaturas premium removidos: o app não
+          movimenta dinheiro (sem carteira/escrow/taxa) e o premium está
+          desativado. Eram tabelas vazias sugerindo um fluxo que não existe. */}
 
       <section className="fin-section">
         <h2>

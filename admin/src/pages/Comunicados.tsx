@@ -2,16 +2,12 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { confirmDialog, toast } from '../lib/ui';
 
-type Audience = 'all' | 'premium' | 'free';
-
-const AUDIENCE_LABEL: Record<Audience, string> = {
-  all: 'Todos os usuários',
-  premium: 'Apenas assinantes Premium',
-  free: 'Apenas usuários Free',
-};
+// Segmentos premium/free saíram: o app é 100% gratuito, então "free" era
+// todo mundo e "premium" eram 2 contas de teste. Só resta um público real.
+const AUDIENCE = 'all' as const;
+const AUDIENCE_LABEL = 'Todos os usuários';
 
 export function Comunicados() {
-  const [audience, setAudience] = useState<Audience>('all');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [count, setCount] = useState<number | null>(null);
@@ -20,10 +16,10 @@ export function Comunicados() {
   useEffect(() => {
     setCount(null);
     api
-      .broadcastPreview(audience)
+      .broadcastPreview(AUDIENCE)
       .then((r) => setCount(r.count))
       .catch(() => setCount(null));
-  }, [audience]);
+  }, []);
 
   const send = async () => {
     if (!title.trim()) {
@@ -32,13 +28,13 @@ export function Comunicados() {
     }
     const ok = await confirmDialog({
       title: 'Enviar comunicado',
-      message: `Enviar “${title.trim()}” para ${count ?? '—'} usuário(s) (${AUDIENCE_LABEL[audience].toLowerCase()})? Eles receberão a notificação no app.`,
+      message: `Enviar “${title.trim()}” para ${count ?? '—'} usuário(s) (${AUDIENCE_LABEL.toLowerCase()})? Eles receberão a notificação no app.`,
       confirmLabel: 'Enviar agora',
     });
     if (!ok) return;
     setSending(true);
     try {
-      const res = await api.broadcast(audience, title.trim(), body.trim());
+      const res = await api.broadcast(AUDIENCE, title.trim(), body.trim());
       toast.success(`Comunicado enviado para ${res.count} usuário(s).`);
       setTitle('');
       setBody('');
@@ -61,17 +57,6 @@ export function Comunicados() {
           <div className="panel-head">
             <h3>Nova notificação</h3>
           </div>
-
-          <label className="field-block">
-            Público
-            <select value={audience} onChange={(e) => setAudience(e.target.value as Audience)}>
-              {(Object.keys(AUDIENCE_LABEL) as Audience[]).map((a) => (
-                <option key={a} value={a}>
-                  {AUDIENCE_LABEL[a]}
-                </option>
-              ))}
-            </select>
-          </label>
 
           <label className="field-block">
             Título
@@ -123,7 +108,7 @@ export function Comunicados() {
             </div>
           </div>
           <p className="muted-text" style={{ marginTop: 16 }}>
-            Destino: <strong>{AUDIENCE_LABEL[audience]}</strong>
+            Destino: <strong>{AUDIENCE_LABEL}</strong>
             <br />
             Alcance estimado: <strong>{count ?? '…'}</strong> usuário(s).
           </p>

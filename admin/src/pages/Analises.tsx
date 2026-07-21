@@ -2,13 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, Analytics } from '../lib/api';
 import { AreaChart, StackedBars, DistBars } from '../components/Charts';
 
-const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const brl = (n: number) => BRL.format(n);
-
-// "2026-05-30" → "30/05" ; "2026-05" → "mai/26"
+// "2026-05-30" → "30/05"
 const dayShort = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const monthShort = (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]}/${iso.slice(2, 4)}`;
 
 const TYPE_LABEL: Record<string, string> = {
   lost: 'Perdidos',
@@ -89,7 +84,6 @@ export function Analises() {
   }
 
   const signupTotal = data.signups.reduce((s, d) => s + d.count, 0);
-  const revenueTotal = data.revenue.reduce((s, d) => s + d.total, 0);
   const ACCENT = ['var(--accent)', 'var(--blue)', 'var(--green)', 'var(--amber)', 'var(--muted-2)'];
 
   return (
@@ -105,21 +99,6 @@ export function Analises() {
           />
         </Panel>
 
-        <Panel title="Receita por mês" sub={`${brl(revenueTotal)} em 6 meses`}>
-          <StackedBars
-            data={data.revenue.map((r) => ({
-              label: monthShort(r.month),
-              fee: r.fee,
-              premium: r.premium,
-            }))}
-            series={[
-              { key: 'fee', label: 'Taxas', color: 'var(--green)' },
-              { key: 'premium', label: 'Premium', color: 'var(--blue)' },
-            ]}
-            formatValue={(n) => brl(n)}
-          />
-        </Panel>
-
         <Panel title="Novos casos por dia" sub="Últimos 14 dias, por tipo">
           <StackedBars
             data={data.cases.map((c) => ({
@@ -132,28 +111,6 @@ export function Analises() {
               { key: 'lost', label: 'Perdidos', color: 'var(--accent)' },
               { key: 'sighted', label: 'Vistos', color: 'var(--amber)' },
               { key: 'rescued', label: 'Resgatados', color: 'var(--green)' },
-            ]}
-          />
-        </Panel>
-
-        <Panel title="Conversão Premium" sub={`${data.premiumFunnel.conversion}% dos usuários`}>
-          <div className="funnel">
-            <div className="funnel-big">{data.premiumFunnel.conversion}%</div>
-            <div className="funnel-detail">
-              <div>
-                <strong>{data.premiumFunnel.premium}</strong> assinantes
-              </div>
-              <div className="muted-text">de {data.premiumFunnel.total} usuários</div>
-            </div>
-          </div>
-          <DistBars
-            data={[
-              { label: 'Premium', value: data.premiumFunnel.premium, color: 'var(--blue)' },
-              {
-                label: 'Free',
-                value: data.premiumFunnel.total - data.premiumFunnel.premium,
-                color: 'var(--muted-2)',
-              },
             ]}
           />
         </Panel>

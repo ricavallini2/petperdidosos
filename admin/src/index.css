@@ -20,6 +20,19 @@
   --shadow: 0 4px 16px rgba(47, 53, 66, 0.05);
   --shadow-lg: 0 18px 48px rgba(47, 53, 66, 0.13);
   --topbar-h: 60px;
+  /* Superfícies e textos que antes eram hex fixo claro — no tema escuro
+     apagavam o conteúdo (fundo branco + texto claro). */
+  --surface-alt: #f7f8fa;   /* cabeçalho de tabela */
+  --surface-hover: #fafbfc; /* hover da linha */
+  --text-amber: #8a6d1a;    /* texto sobre --amber-bg */
+  --text-amber-2: #8a5a1a;
+  --text-green: #1f7a44;    /* texto sobre --green-bg */
+  --border-amber: #ffe2ad;
+  --border-amber-2: #ffd49c;
+  --border-green: #b6e3c6;
+  --error-bg: #ffeaec;
+  --error-border: #ffc2c8;
+  --error-text: #b3262f;
 }
 
 /* Tema escuro — sobrescreve os tokens; todo o resto usa var() e se adapta */
@@ -41,6 +54,17 @@
   --blue-bg: #15212f;
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.5);
+  --surface-alt: #232733;
+  --surface-hover: #232733;
+  --text-amber: #f0c980;
+  --text-amber-2: #f0c085;
+  --text-green: #7ce0a4;
+  --border-amber: #4a3c1c;
+  --border-amber-2: #4a3820;
+  --border-green: #24503a;
+  --error-bg: #35191d;
+  --error-border: #5c2a30;
+  --error-text: #ff8a94;
 }
 
 body {
@@ -68,7 +92,11 @@ a { text-decoration: none; color: inherit; }
   position: sticky; top: 0; height: 100vh;
 }
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.content { flex: 1; padding: 28px 40px; width: 100%; max-width: 1320px; }
+/* margin auto: em monitor largo o conteúdo ficava colado à esquerda. */
+.content { flex: 1; padding: 28px 40px; width: 100%; max-width: 1320px; margin: 0 auto; }
+
+/* Itens fixos do topo do menu (Visão geral / Análises) */
+.nav-pinned { margin-bottom: 6px; }
 
 /* ---- Topbar ---- */
 .topbar {
@@ -114,6 +142,45 @@ a { text-decoration: none; color: inherit; }
   .topbar { padding: 0 18px; }
   .content { padding: 20px 18px; }
   .topbar-admin-name { display: none; }
+}
+
+/* ---- Responsivo ----
+   Abaixo de 1024px o sidebar de 248px inviabilizava o conteúdo (num tablet
+   sobravam ~480px; num celular, ~110px). Vira uma barra horizontal rolável
+   no topo, e o conteúdo passa a ocupar a largura toda. */
+@media (max-width: 1024px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: 100%; height: auto; position: static;
+    border-right: none; border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .sidebar nav {
+    display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+  .nav-pinned { display: flex; gap: 8px; margin-bottom: 0; }
+  .nav-group { min-width: max-content; }
+  .nav-group-items { display: flex; gap: 8px; }
+  .nav-link { white-space: nowrap; }
+  /* O título do grupo vira só um rótulo — colapsar não faz sentido na horizontal. */
+  .nav-group-title { display: none; }
+  .sidebar-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+}
+
+/* Tabelas: rolam dentro do próprio container em vez de esticar a página.
+   Sem isso, listas de 7-9 colunas geravam scroll horizontal no site todo. */
+.table-scroll { width: 100%; overflow-x: auto; }
+@media (max-width: 1100px) {
+  .data-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .desc-cell { white-space: normal; }
+  /* Grids e cabeçalhos que estouravam por não quebrar linha */
+  .panel-grid { grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr)); }
+  .setting-card { flex-wrap: wrap; }
+  .detail-header { flex-wrap: wrap; }
+  .ticket-head { flex-wrap: wrap; }
+  .pagination { flex-wrap: wrap; }
+  .page-head-row { flex-wrap: wrap; gap: 10px; }
 }
 
 /* ---- Marca ---- */
@@ -184,7 +251,7 @@ nav { margin-top: 24px; display: flex; flex-direction: column; gap: 6px; flex: 1
 .stat-sub { font-size: 11px; color: var(--muted-2); font-weight: 500; }
 
 .notice {
-  background: var(--amber-bg); border: 1px solid #ffe2ad; color: #8a6d1a;
+  background: var(--amber-bg); border: 1px solid var(--border-amber); color: var(--text-amber);
   padding: 14px 16px; border-radius: 12px; font-size: 13px; line-height: 1.55;
 }
 .notice code {
@@ -216,11 +283,11 @@ nav { margin-top: 24px; display: flex; flex-direction: column; gap: 6px; flex: 1
 .btn-primary:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
 
 .alert {
-  background: var(--amber-bg); border: 1px solid #ffd49c; color: #8a5a1a;
+  background: var(--amber-bg); border: 1px solid var(--border-amber-2); color: var(--text-amber-2);
   padding: 11px 13px; border-radius: 10px; font-size: 13px; margin-top: 10px;
 }
-.alert.error { background: #ffeaec; border-color: #ffc2c8; color: #b3262f; }
-.alert.ok { background: var(--green-bg); border-color: #b6e3c6; color: #1f7a44; }
+.alert.error { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
+.alert.ok { background: var(--green-bg); border-color: var(--border-green); color: var(--text-green); }
 
 /* ---- Seções ---- */
 .fin-section { margin-top: 32px; }
@@ -240,7 +307,7 @@ nav { margin-top: 24px; display: flex; flex-direction: column; gap: 6px; flex: 1
   font-size: 13px; box-shadow: var(--shadow);
 }
 .data-table th {
-  text-align: left; padding: 12px 15px; background: #f7f8fa;
+  text-align: left; padding: 12px 15px; background: var(--surface-alt);
   color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase;
   letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
 }
@@ -248,7 +315,7 @@ nav { margin-top: 24px; display: flex; flex-direction: column; gap: 6px; flex: 1
   padding: 12px 15px; border-bottom: 1px solid var(--border); vertical-align: middle;
 }
 .data-table tr:last-child td { border-bottom: none; }
-.data-table tbody tr:hover { background: #fafbfc; }
+.data-table tbody tr:hover { background: var(--surface-hover); }
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .data-table .mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px; }
 .desc-cell { color: var(--muted); max-width: 280px; }

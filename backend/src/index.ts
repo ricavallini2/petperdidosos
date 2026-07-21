@@ -352,12 +352,19 @@ const requireAdmin = asyncHandler(async (req: Request, res: Response, next: Next
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, full_name, photo_url, is_admin')
+    .select('id, full_name, photo_url, is_admin, status')
     .eq('id', userData.user.id)
     .maybeSingle();
 
   if (!profile?.is_admin) {
     return res.status(403).json({ error: 'Acesso restrito a administradores' });
+  }
+
+  // Ser admin não basta: uma conta bloqueada/banida perde o acesso ao painel.
+  // Sem esta checagem, revogar um admin comprometido exigiria tirar o is_admin
+  // no banco — o status de moderação sozinho não o impedia de entrar.
+  if (profile.status === 'blocked' || profile.status === 'banned') {
+    return res.status(403).json({ error: 'Esta conta está bloqueada' });
   }
 
   (req as Request & { admin?: unknown }).admin = { ...profile, email: userData.user.email };

@@ -238,9 +238,10 @@ export function CasoDetalhe() {
         ) : (
           <table className="data-table">
             <thead>
+              {/* Sem coluna "Taxa": o app não cobra comissão — fee_amount é
+                  sempre 0 nas recompensas novas. */}
               <tr>
-                <th className="num">Valor</th>
-                <th className="num">Taxa</th>
+                <th className="num">Valor anunciado</th>
                 <th>Status</th>
                 <th>Criada em</th>
                 <th>Resolução</th>
@@ -250,7 +251,6 @@ export function CasoDetalhe() {
               {data.rewards.map((r) => (
                 <tr key={r.id}>
                   <td className="num">{brl(Number(r.amount))}</td>
-                  <td className="num">{brl(Number(r.fee_amount))}</td>
                   <td>
                     <span className={`badge rwd-${r.status}`}>
                       {REWARD_STATUS_LABEL[r.status] ?? r.status}

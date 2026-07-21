@@ -7,28 +7,33 @@ type Badge = 'openTickets' | 'openReports' | 'sightingsPending';
 type NavItem = { to: string; label: string; end?: boolean; badge?: Badge };
 type NavGroup = { title: string; items: NavItem[] };
 
+// Home do painel — fora de grupo, para nunca sumir num grupo recolhido.
+const PINNED: NavItem[] = [
+  { to: '/', label: 'Visão geral', end: true },
+  { to: '/analises', label: 'Análises' },
+];
+
+// Ordem = ordem do dia do operador: primeiro o que exige ação (fila com
+// badges), depois o conteúdo, depois pessoas, e por último o sistema.
 const GROUPS: NavGroup[] = [
   {
-    title: 'Operação',
+    // Os 3 itens com badge ficam juntos: recolhido, o grupo mostra quanto
+    // trabalho existe pendente hoje.
+    title: 'Fila de trabalho',
     items: [
-      { to: '/', label: 'Visão geral', end: true },
-      { to: '/analises', label: 'Análises' },
-      { to: '/mapa', label: 'Mapa' },
-      { to: '/casos', label: 'Casos' },
-      { to: '/doacoes', label: 'Doações' },
-      { to: '/avistamentos', label: 'Avistamentos', badge: 'sightingsPending' },
       { to: '/denuncias', label: 'Denúncias', badge: 'openReports' },
+      { to: '/chamados', label: 'Chamados', badge: 'openTickets' },
+      { to: '/avistamentos', label: 'Avistamentos', badge: 'sightingsPending' },
     ],
   },
   {
-    title: 'Atendimento',
-    items: [{ to: '/chamados', label: 'Chamados', badge: 'openTickets' }],
-  },
-  {
-    title: 'Receita',
+    title: 'Operação',
     items: [
-      { to: '/financeiro', label: 'Financeiro' },
-      { to: '/assinaturas', label: 'Assinaturas' },
+      { to: '/casos', label: 'Casos' },
+      // "Adoções", não "Doações": aqui é doação de PET. Doação em dinheiro
+      // (Pix) é outra coisa e se configura em Configurações.
+      { to: '/doacoes', label: 'Adoções' },
+      { to: '/mapa', label: 'Mapa' },
     ],
   },
   {
@@ -41,10 +46,10 @@ const GROUPS: NavGroup[] = [
   {
     title: 'Sistema',
     items: [
-      { to: '/atualizacoes', label: 'Atualizações do App' },
+      { to: '/configuracoes', label: 'Configurações' },
       { to: '/administradores', label: 'Administradores' },
       { to: '/auditoria', label: 'Auditoria' },
-      { to: '/configuracoes', label: 'Configurações' },
+      { to: '/atualizacoes', label: 'Atualizações do app' },
     ],
   },
 ];
@@ -101,6 +106,19 @@ export function Sidebar() {
       </div>
 
       <nav>
+        <div className="nav-group-items nav-pinned">
+          {PINNED.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.end}
+              className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}
+            >
+              <span>{n.label}</span>
+            </NavLink>
+          ))}
+        </div>
+
         {GROUPS.map((group) => {
           // O grupo da página ativa permanece sempre aberto
           const isOpen = activeGroup === group.title || !collapsed.has(group.title);
