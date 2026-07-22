@@ -32,7 +32,8 @@ CAPTURAS = [
     ('Screenshot_20260722_195117_PetPerdidoSOS.jpg', 'Histórias reais\nde reencontro'),
 ]
 
-FAIXA = 300  # altura da faixa de legenda
+FAIXA = 300     # altura da faixa de legenda
+CORTE_TOPO = 116  # remove a barra de status do Android (relógio, ícones, bateria)
 
 
 def fonte(caminho, tamanho):
@@ -47,6 +48,9 @@ f_marca = fonte(F_BOLD, 34)
 
 for i, (arq, legenda) in enumerate(CAPTURAS, 1):
     print_orig = Image.open(os.path.join(PRINTS, arq)).convert('RGB')
+    # Corta a barra de status do sistema — ela tem o relógio e os ícones do
+    # aparelho do usuário, que não devem aparecer na ficha da loja.
+    print_orig = print_orig.crop((0, CORTE_TOPO, print_orig.width, print_orig.height))
     L = print_orig.width  # 1440
 
     canvas = Image.new('RGB', (L, FAIXA + print_orig.height), CORAL)
