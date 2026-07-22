@@ -34,6 +34,8 @@ CAPTURAS = [
 
 FAIXA = 300     # altura da faixa de legenda
 CORTE_TOPO = 116  # remove a barra de status do Android (relógio, ícones, bateria)
+CORTE_BASE = 165  # remove a barra de navegação do Android (||| O <), mantendo a
+                  # tab bar do app (Mapa/Chats/...) logo acima
 
 
 def fonte(caminho, tamanho):
@@ -48,9 +50,11 @@ f_marca = fonte(F_BOLD, 34)
 
 for i, (arq, legenda) in enumerate(CAPTURAS, 1):
     print_orig = Image.open(os.path.join(PRINTS, arq)).convert('RGB')
-    # Corta a barra de status do sistema — ela tem o relógio e os ícones do
-    # aparelho do usuário, que não devem aparecer na ficha da loja.
-    print_orig = print_orig.crop((0, CORTE_TOPO, print_orig.width, print_orig.height))
+    # Corta as barras do sistema (topo: status; base: navegação) — são cromo do
+    # aparelho do usuário e não devem aparecer na ficha da loja. A tab bar do
+    # próprio app (Mapa/Chats/...) fica preservada.
+    print_orig = print_orig.crop(
+        (0, CORTE_TOPO, print_orig.width, print_orig.height - CORTE_BASE))
     L = print_orig.width  # 1440
 
     canvas = Image.new('RGB', (L, FAIXA + print_orig.height), CORAL)
