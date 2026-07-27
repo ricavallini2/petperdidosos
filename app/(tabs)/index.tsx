@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, Image, Dimensions, TouchableOpacity, Animated, Modal, ScrollView, Linking, Platform, TextInput, KeyboardAvoidingView, PanResponder } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, Image, Dimensions, TouchableOpacity, Animated, Modal, ScrollView, Linking, Platform, TextInput, KeyboardAvoidingView, PanResponder, InteractionManager } from 'react-native';
 import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot from 'react-native-view-shot';
@@ -852,26 +852,41 @@ export default function MapScreen() {
   }, []);
 
   // Após o cadastro + 1º acesso, lembra o usuário de completar o perfil.
+  // IMPORTANTE (iOS): apresentar o Modal de confirmação enquanto a transição de
+  // navegação do login ainda está animando deixa o container do Modal órfão e
+  // CONGELA a tela (só reabrindo o app resolve). Um setTimeout fixo é frágil
+  // justamente no 1º cold start após o cadastro — que é quando isso aparece.
+  // Por isso esperamos as interações/animação de navegação terminarem de fato
+  // (runAfterInteractions) e ainda damos uma folga curta antes de apresentar.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let handle: { cancel: () => void } | null = null;
     (async () => {
       const pending = await AsyncStorage.getItem(COMPLETE_PROFILE_KEY);
       if (pending !== 'pending' || cancelled) return;
       await AsyncStorage.removeItem(COMPLETE_PROFILE_KEY);
-      setTimeout(() => {
+      handle = InteractionManager.runAfterInteractions(() => {
         if (cancelled) return;
-        showConfirm({
-          title: 'Complete seu perfil',
-          message: 'Adicione seu nome, telefone e uma foto. Um perfil completo passa mais confiança para outros tutores e voluntários — e agiliza o resgate.',
-          icon: 'person-circle',
-          confirmText: 'Completar perfil',
-          cancelText: 'Agora não',
-          onConfirm: () => router.push('/profile/edit'),
-        });
-      }, 700);
+        timer = setTimeout(() => {
+          if (cancelled) return;
+          showConfirm({
+            title: 'Complete seu perfil',
+            message: 'Adicione seu nome, telefone e uma foto. Um perfil completo passa mais confiança para outros tutores e voluntários — e agiliza o resgate.',
+            icon: 'person-circle',
+            confirmText: 'Completar perfil',
+            cancelText: 'Agora não',
+            onConfirm: () => router.push('/profile/edit'),
+          });
+        }, 350);
+      });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      handle?.cancel?.();
+    };
   }, [user]);
 
   useEffect(() => {
