@@ -117,7 +117,39 @@ export async function signInWithApple() {
     token,
   });
   if (error) throw error;
+
+  // A Apple só envia o nome no PRIMEIRO login de cada Apple ID, e apenas aqui no
+  // credential (não vai dentro do identityToken). Se não gravarmos agora, ela
+  // nunca mais reenvia e o perfil fica com o fallback do trigger — o prefixo do
+  // email, que com "Ocultar meu e-mail" vira algo como "ykjhk6gr65".
+  // Best-effort: nunca bloqueia/quebra o login.
+  await maybeSetAppleName(data.user, credential).catch(() => {});
+
   return data;
+}
+
+/** Um nome só é "de verdade" se não for o prefixo do email gerado pelo trigger. */
+function isPlaceholderName(name: string | null | undefined, email?: string | null) {
+  const n = (name ?? '').trim();
+  if (!n) return true;
+  const prefixo = (email ?? '').split('@')[0]?.trim();
+  return !!prefixo && n.toLowerCase() === prefixo.toLowerCase();
+}
+
+/**
+ * Grava o nome vindo da Apple no primeiro login. Só sobrescreve quando o perfil
+ * ainda não tem nome real (vazio ou igual ao prefixo do email), para não
+ * atropelar um nome que o usuário já ajustou à mão.
+ */
+async function maybeSetAppleName(user: any, credential: any) {
+  const { givenName, familyName } = credential?.fullName ?? {};
+  const nome = [givenName, familyName].filter(Boolean).join(' ').trim();
+  if (!nome || !user?.id) return;
+
+  const profile = await getUserProfile(user.id).catch(() => null);
+  if (isPlaceholderName(profile?.full_name, user.email)) {
+    await updateUserProfile(user.id, { full_name: nome });
+  }
 }
 
 /** Apple Sign-In só existe em iOS (13+) e com o entitlement habilitado no build. */
