@@ -15,7 +15,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { supabase } from './supabase.js';
 import { haversineMeters } from './distance.js';
-import { buildPixPayload } from './pix.js';
+import { buildPixPayload, normalizePixKey } from './pix.js';
 import { generateImageEmbedding, isEmbeddingEnabled } from './embedding.js';
 import {
   generatePetVisionTags, isVisionTagsEnabled, attributeAgreement, hybridScore,
@@ -252,6 +252,16 @@ app.get(
     const pixKey = (data?.donation_pix_key ?? '').trim();
     if (!pixKey) return res.status(503).json({ error: 'Doação por Pix ainda não configurada.' });
 
+    // Normaliza antes de montar o código: uma chave em formato errado gera um
+    // BR Code válido que só falha no app do banco do doador. Melhor não oferecer
+    // Pix do que oferecer um que não paga. Corrige também o caso mais comum —
+    // telefone salvo sem o +55, que o banco interpretaria como CPF.
+    const normalized = normalizePixKey(pixKey);
+    if (!normalized.ok) {
+      console.error('[doação] chave Pix configurada é inválida:', normalized.error);
+      return res.status(503).json({ error: 'Doação por Pix indisponível no momento.' });
+    }
+
     const raw = Number(String(req.query.amount ?? '').replace(',', '.'));
     const amount = Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
     if (amount < 1 || amount > 50000) {
@@ -259,7 +269,7 @@ app.get(
     }
 
     const payload = buildPixPayload({
-      key: pixKey,
+      key: normalized.key,
       merchantName: 'PETPERDIDOSOS',
       merchantCity: 'SAO PAULO',
       amount,
@@ -1613,7 +1623,17 @@ app.post(
       patch.match_radius_m = r;
     }
     if (req.body?.donationPixKey !== undefined) {
-      patch.donation_pix_key = String(req.body.donationPixKey ?? '').trim() || null;
+      const v = String(req.body.donationPixKey ?? '').trim();
+      if (!v) {
+        patch.donation_pix_key = null;
+      } else {
+        // Grava sempre no formato do BR Code. Sem isso, uma chave em formato
+        // errado é aceita em silêncio e só falha no app do banco do doador —
+        // ninguém descobre que as doações pararam de funcionar.
+        const normalized = normalizePixKey(v);
+        if (!normalized.ok) return res.status(400).json({ error: normalized.error });
+        patch.donation_pix_key = normalized.key;
+      }
     }
     if (req.body?.donationUrl !== undefined) {
       const v = String(req.body.donationUrl ?? '').trim();
